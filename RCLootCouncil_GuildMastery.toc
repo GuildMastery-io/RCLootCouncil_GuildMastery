@@ -1,0 +1,13 @@
+## Interface: 120005
+## Title: RCLootCouncil - GuildMastery
+## Notes: Export and history RCLootCouncil votes - /gm export - /gm history
+## Author: Ged
+## Version: 1.0.0
+## Dependencies: RCLootCouncil
+## IconTexture: Interface\AddOns\RCLootCouncil_GuildMastery\Media\logo-gm.png
+## SavedVariables: RCLootCouncil_GuildMasteryDB
+## X-Category: Loot
+## X-Localizations: enUS
+
+History.lua
+core.lua

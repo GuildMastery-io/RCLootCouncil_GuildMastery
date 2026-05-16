@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: GuildMastery Discord
+    url: https://discord.gg/AVRSs9P2Xk
+    about: For quick questions, casual feedback, or help that doesn't need a full bug report. The addon's #support channel is the fastest place to reach the author.
+  - name: GuildMastery website
+    url: https://www.guildmastery.io
+    about: Visit the main GuildMastery web app — for issues with the web app itself (not the addon), please report there.

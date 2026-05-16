@@ -1,0 +1,13 @@
+package-as: RCLootCouncil_GuildMastery
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - .git/*
+  - .github/*
+  - .gitignore
+  - .pkgmeta
+  - README.md
+  - CHANGELOG.md
