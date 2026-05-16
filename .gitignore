@@ -10,3 +10,7 @@ Thumbs.db
 *.zip
 release/
 build/
+
+# OpenSpec workspace (local-only, not part of the addon distribution)
+openspec/
+.openspec/
