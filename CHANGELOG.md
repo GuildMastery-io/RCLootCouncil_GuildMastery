@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 — 2026-05-17
+
+### Features
+
+- **Local history is now bounded to 180 days.** A new `GMLootHistory:PruneOldEntries()` runs before every sync payload generation (so old sessions never leak to the companion or backend) and once at every `PLAYER_LOGIN` as a safety net for users who do not sync. Aligns with the GuildMastery web app retention policy. Debug output available with `/gm debug`.
+
+### Internal
+
+- `RETENTION_DAYS = 180` constant in `History.lua`. Keep this synchronized with the corresponding backend / companion constants if you ever change it.
+
 ## 1.0.0 — 2026-05-16
 
 Initial public release on CurseForge.

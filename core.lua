@@ -872,6 +872,13 @@ eventFrame:SetScript("OnEvent", function(self, event)
         C_Timer.After(3.5, CheckRCVersion)
         -- Auto-restore post-reload after RC has finished init (TryHookRC at 3s).
         C_Timer.After(4, CheckPendingRestore)
+        -- Retention safety-net : prune entries older than 180 days at login,
+        -- even when the user does not trigger a sync.
+        C_Timer.After(2, function()
+            if GMLootHistory and GMLootHistory.PruneOldEntries then
+                GMLootHistory:PruneOldEntries()
+            end
+        end)
 
         print(PREFIX .. " loaded \194\183 |cFFFFD700/gm export|r \194\183 |cFFFFD700/gm history|r \194\183 |cFFFFD700/gm debug|r")
     elseif event == "PLAYER_LOGOUT" then

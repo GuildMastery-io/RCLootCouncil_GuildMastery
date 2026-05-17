@@ -260,6 +260,37 @@ end
 
 function GMLootHistory:GetCount() return #GetDB().history end
 
+-- ============================================================
+-- Retention : drop entries older than RETENTION_DAYS days.
+-- Mirrors the server-side retention policy enforced by the GuildMastery
+-- web app (cf. src/lib/loot-sessions/cleanup.ts in the nocturnys repo).
+-- Keep these two constants synchronized.
+-- ============================================================
+local RETENTION_DAYS = 180
+local RETENTION_SECONDS = RETENTION_DAYS * 24 * 60 * 60
+
+function GMLootHistory:PruneOldEntries()
+    local hist = GetDB().history
+    if not hist or #hist == 0 then return 0 end
+
+    local cutoff = time() - RETENTION_SECONDS
+    local kept = {}
+    local dropped = 0
+    for _, e in ipairs(hist) do
+        if (e.timestamp or 0) >= cutoff then
+            table.insert(kept, e)
+        else
+            dropped = dropped + 1
+        end
+    end
+
+    if dropped > 0 then
+        GetDB().history = kept
+        DebugPrint(string.format("PruneOldEntries: dropped %d entry(ies) older than %d days", dropped, RETENTION_DAYS))
+    end
+    return dropped
+end
+
 function GMLootHistory:GetLastSavedSessions()
     local hist = GetDB().history
     if not hist or #hist == 0 then return nil end
@@ -296,6 +327,12 @@ function GMLootHistory:GetLastSavedSessions()
 end
 
 function GMLootHistory:GetAllSessions()
+    -- Always prune before serializing : this is the unique entry point that
+    -- feeds the `is_full_sync` payload sent to the backend. Without pruning
+    -- here, old sessions would be re-sent indefinitely and re-inserted by
+    -- the server (which would purge them again on the next lazy-cleanup pass).
+    GMLootHistory:PruneOldEntries()
+
     local hist = GetDB().history
     if not hist or #hist == 0 then return {} end
 
