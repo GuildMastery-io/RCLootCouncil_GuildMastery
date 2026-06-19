@@ -272,7 +272,9 @@ local function BuildSessionsFromLootTable()
             item_link_raw = sd.link or "",
             item_id       = sd.itemID or 0,
             item_ilvl     = sd.ilvl or 0,
-            awarded_to    = sd.awarded or "",
+            -- RC's `awarded` can be a boolean flag, not a name. Only keep a
+            -- string winner name; otherwise empty (avoids `awarded_to: true`).
+            awarded_to    = (type(sd.awarded) == "string") and sd.awarded or "",
             looted_at     = time(),
             difficulty_id   = diffID   or 0,
             difficulty_name = diffName or "",
@@ -561,7 +563,9 @@ function RCLootCouncil_GuildMastery_UpdateSyncPayload()
 
     local exportData = {
         addon            = ADDON_NAME .. "_FullSync",
-        version          = "1.0.0",
+        -- v2: each session carries `id` / `looted_at` (frozen) / `updated_at`,
+        -- so the server routes it through per-entry incremental sync.
+        version          = "2",
         timestamp        = date("!%Y-%m-%dT%H:%M:%SZ"),
         is_full_sync     = true,
         sessions         = sessions,
