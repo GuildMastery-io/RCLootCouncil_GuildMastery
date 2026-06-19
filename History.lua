@@ -168,8 +168,12 @@ function GMLootHistory:SaveSessions(sessions, dedup)
             _saveCounter = _saveCounter + 1
             local ts = time()
             local t  = date("*t")
+            -- Stable, deterministic id (SHARED formula with the server and the
+            -- companion: `${looted_at}_${session}_${item_id}`). `created_at` is
+            -- frozen at creation; `timestamp` acts as updated_at (mutated).
             table.insert(GetDB().history, {
-                id            = ts .. "-" .. _saveCounter,
+                id            = ts .. "_" .. (s.session or 0) .. "_" .. (s.item_id or 0),
+                created_at    = ts,
                 timestamp     = ts,
                 date          = string.format("%02d/%02d/%04d", t.day, t.month, t.year),
                 time_str      = string.format("%02d:%02d:%02d", t.hour, t.min, t.sec),
@@ -338,7 +342,16 @@ function GMLootHistory:GetAllSessions()
 
     local sessions = {}
     for _, e in ipairs(hist) do
+        -- Soft in-place migration of legacy entries (< v2):
+        --  - `created_at` = frozen looted_at (never mutated). Best-effort for
+        --    existing entries: freeze it to the current timestamp.
+        --  - `id` = SHARED formula `${created_at}_${session}_${item_id}`
+        --    (same on the server and companion), recomputed idempotently.
+        local createdAt = e.created_at or e.timestamp or 0
+        e.created_at = createdAt
+        e.id = createdAt .. "_" .. (e.session_num or 0) .. "_" .. (e.item_id or 0)
         table.insert(sessions, {
+            id            = e.id,
             session       = e.session_num,
             item          = e.item,
             item_link_raw = e.item_link_raw,
@@ -347,7 +360,8 @@ function GMLootHistory:GetAllSessions()
             awarded_to    = e.awarded_to,
             boss          = e.boss,
             candidates    = e.candidates,
-            looted_at     = e.timestamp or 0,
+            looted_at     = createdAt,          -- frozen (creation)
+            updated_at    = e.timestamp or createdAt,  -- mutated (award/unaward)
             date          = e.date,
         })
     end
