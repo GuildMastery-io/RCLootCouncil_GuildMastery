@@ -84,6 +84,22 @@ The exported payload follows this shape (consumed by GuildMastery `saveRcExport`
 }
 ```
 
+### Full-sync payload (`syncPayload`, v2)
+
+The `syncPayload` written by `RCLootCouncil_GuildMastery_UpdateSyncPayload` (consumed
+by the `GuildMasterySync` companion) uses `"version": "2"` and adds, on **every**
+session, the fields needed for incremental syncing:
+
+| Field | Meaning |
+|---|---|
+| `id` | Stable per-entry identity, never changes. Format: `${looted_at}_${session}_${item_id}` (shared verbatim with the companion and the backend). |
+| `looted_at` | Creation epoch (seconds), **frozen** — never bumped on award/unaward. |
+| `updated_at` | Last-mutation epoch (seconds), bumped when the entry changes. |
+
+Legacy history entries (created before v2) are migrated in place on the first
+`GetAllSessions` call: `created_at` is frozen to the current `timestamp` and `id`
+is (re)computed deterministically. The backend reconciles on the first v2 sync.
+
 ## Architecture
 
 - `core.lua` (~790 lines) — RC hooks, slash commands, JSON serializer, the badge button, the save-and-reload flow.
@@ -112,7 +128,7 @@ Stored in `WTF/Account/<accountname>/SavedVariables/RCLootCouncil_GuildMastery.l
 |---|---|---|
 | `history` | array | Accumulated history entries |
 | `lastExport` | string | Last JSON export payload (consumed by external sync tools) |
-| `syncPayload` | string | Full-sync JSON of every entry |
+| `syncPayload` | string | Full-sync JSON of every entry (v2 — carries per-entry `id`/`looted_at`/`updated_at`) |
 | `lastUpdated` | string | ISO-8601 timestamp of the last save |
 | `pendingRestore` | table\|nil | Transient flag set before `ReloadUI()`, consumed at next login |
 | `debug` | bool | Debug logging flag (toggled by `/gm debug`) |
