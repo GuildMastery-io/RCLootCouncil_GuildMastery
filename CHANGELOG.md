@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 — 2026-07-25
+
+### Fixes
+
+- **La difficulté du raid est désormais conservée dans l'historique.** `GetInstanceInfo()` était bien lu à l'export, mais `SaveSessions` ne stockait pas `difficulty_id`/`difficulty_name` dans l'entrée d'historique. Résultat : le full sync (`GetAllSessions`) renvoyait des loots sans difficulté, et le web app les classait en Normal par défaut (ex : un loot Mythique ilvl 298 traité comme Normal). La difficulté est maintenant persistée à la sauvegarde, backfillée lors du merge de doublon (première capture hors instance → re-capture en raid), et exposée par `GetAllSessions`/`GetLastSavedSessions`.
+- Note : n'affecte que les loots capturés **après** cette mise à jour. Les entrées d'historique antérieures restent sans difficulté (le web app les déduit de l'item level).
+
 ## 1.1.0 — 2026-05-17
 
 ### Features
