@@ -1,9 +1,9 @@
 name: Release
 
-# Packaging autonome : à chaque tag `vX.Y.Z` poussé, on construit le zip de
-# l'addon (dossier RCLootCouncil_GuildMastery/) et on l'attache à une release
-# GitHub. Aucun service externe requis (CurseForge/WoWInterface non nécessaires).
-# Même principe que le companion GuildMastery Sync (tag → release + artefact).
+# Standalone packaging: on every `vX.Y.Z` tag pushed, build the addon zip
+# (RCLootCouncil_GuildMastery/ folder) and attach it to a GitHub release.
+# No external service required (CurseForge/WoWInterface not needed).
+# Same principle as the GuildMastery Sync companion (tag -> release + artifact).
 
 on:
   push:
@@ -22,31 +22,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Vérifier que le tag == version du .toc
+      - name: Verify tag matches .toc version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           TOC_VERSION="$(grep -iE '^## Version:' RCLootCouncil_GuildMastery.toc | sed 's/.*: *//' | tr -d '\r' | xargs)"
           echo "tag=$VERSION  toc=$TOC_VERSION"
           if [ "$VERSION" != "$TOC_VERSION" ]; then
-            echo "::error::Le tag ($VERSION) ne correspond pas à la version du .toc ($TOC_VERSION). Aligne les deux avant de tagger."
+            echo "::error::Tag ($VERSION) does not match the .toc version ($TOC_VERSION). Align both before tagging."
             exit 1
           fi
 
-      - name: Construire le zip de l'addon
+      - name: Build addon zip
         id: build
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           PKG="RCLootCouncil_GuildMastery"
           STAGE="dist/${PKG}"
           mkdir -p "${STAGE}"
-          # Fichiers embarqués (le reste est ignoré via .pkgmeta : .git, .github,
-          # README, CHANGELOG, openspec…). Le zip se dézippe dans Interface/AddOns/.
+          # Shipped files (the rest is ignored via .pkgmeta: .git, .github,
+          # README, CHANGELOG, openspec...). The zip extracts into Interface/AddOns/.
           cp RCLootCouncil_GuildMastery.toc core.lua History.lua "${STAGE}/"
           cp -r Media "${STAGE}/"
           ( cd dist && zip -r "../${PKG}-${VERSION}.zip" "${PKG}" )
           echo "zip=${PKG}-${VERSION}.zip" >> "$GITHUB_OUTPUT"
 
-      - name: Extraire les notes de release depuis le CHANGELOG
+      - name: Extract release notes from CHANGELOG
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           awk -v v="## ${VERSION}" '
@@ -58,7 +58,7 @@ jobs:
             echo "RCLootCouncil_GuildMastery ${VERSION}" > RELEASE_NOTES.md
           fi
 
-      - name: Publier la release GitHub
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.build.outputs.zip }}

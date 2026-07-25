@@ -147,8 +147,8 @@ local function UpdateRecentDuplicate(s, matched)
                 e.awarded_to = s.awarded_to or ""
                 e.candidates = s.candidates or {}
                 e.timestamp  = now
-                -- Backfill la difficulté si une capture ultérieure la connaît
-                -- (ex: 1re sauvegarde hors instance → 0, re-capture en raid → réel).
+                -- Backfill the difficulty if a later capture knows it
+                -- (e.g. first save out of instance -> 0, re-capture in raid -> real).
                 if s.difficulty_id and s.difficulty_id > 0 then
                     e.difficulty_id   = s.difficulty_id
                     e.difficulty_name = s.difficulty_name or e.difficulty_name or ""
@@ -191,9 +191,9 @@ function GMLootHistory:SaveSessions(sessions, dedup)
                 item_ilvl     = s.item_ilvl   or 0,
                 awarded_to    = s.awarded_to  or "",
                 boss          = s.boss        or "",
-                -- WoW difficultyID capturé à l'export (14=NM/15=HM/16=MM/17=LFR,
-                -- 0 = hors instance). Sans lui, le full sync perdait la difficulté
-                -- et le web app classait les loots en Normal par défaut.
+                -- WoW difficultyID captured at export time (14=NM/15=HM/16=MM/
+                -- 17=LFR, 0 = out of instance). Without it the full sync lost the
+                -- difficulty and the web app defaulted loot to Normal.
                 difficulty_id   = s.difficulty_id   or 0,
                 difficulty_name = s.difficulty_name or "",
                 candidates    = s.candidates  or {},

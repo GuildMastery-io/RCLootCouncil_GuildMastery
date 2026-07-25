@@ -4,8 +4,8 @@
 
 ### Fixes
 
-- **La difficulté du raid est désormais conservée dans l'historique.** `GetInstanceInfo()` était bien lu à l'export, mais `SaveSessions` ne stockait pas `difficulty_id`/`difficulty_name` dans l'entrée d'historique. Résultat : le full sync (`GetAllSessions`) renvoyait des loots sans difficulté, et le web app les classait en Normal par défaut (ex : un loot Mythique ilvl 298 traité comme Normal). La difficulté est maintenant persistée à la sauvegarde, backfillée lors du merge de doublon (première capture hors instance → re-capture en raid), et exposée par `GetAllSessions`/`GetLastSavedSessions`.
-- Note : n'affecte que les loots capturés **après** cette mise à jour. Les entrées d'historique antérieures restent sans difficulté (le web app les déduit de l'item level).
+- **Raid difficulty is now preserved in the history.** `GetInstanceInfo()` was correctly read at export time, but `SaveSessions` did not store `difficulty_id`/`difficulty_name` in the history entry. As a result the full sync (`GetAllSessions`) returned loot with no difficulty, and the web app defaulted it to Normal (e.g. a Mythic ilvl 298 item treated as Normal). Difficulty is now persisted on save, backfilled when a duplicate is merged (first capture out of instance → re-capture in the raid), and exposed by `GetAllSessions`/`GetLastSavedSessions`.
+- Note: only affects loot captured **after** this update. Older history entries remain without difficulty (the web app derives it from item level).
 
 ## 1.1.0 — 2026-05-17
 
