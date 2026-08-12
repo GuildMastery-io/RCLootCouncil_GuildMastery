@@ -79,6 +79,16 @@ local function GetRC()
     return (ok and rc) and rc or nil
 end
 
+-- Access RC's Master Looter module. RC registers it as "RCLootCouncilML"
+-- (module type "masterlooter") - there is NO module named "RCMLCore".
+-- History.lua already uses rc:GetActiveModule("masterlooter"); we mirror it here.
+local function GetMLModule(rc)
+    rc = rc or GetRC()
+    if not rc then return nil end
+    local ok, ml = pcall(function() return rc:GetActiveModule("masterlooter") end)
+    return (ok and ml) and ml or nil
+end
+
 -- Minimum RCLootCouncil version required. Older versions may lack APIs we use
 -- (UnTrackAndLogLoot, GetHistoryDB, real_response field on candidates, etc.).
 local MIN_RC_VERSION = "3.21.1"
@@ -339,7 +349,7 @@ end
 
 local function AutoSaveFromRC()
     local rc = GetRC()
-    local ml = rc and rc:GetModule("RCMLCore", true)
+    local ml = GetMLModule(rc)
     if ml and ml.isHistoricalLoad then
         DebugPrint("AutoSave skipped because isHistoricalLoad is set.")
         return
@@ -362,7 +372,7 @@ local lastAutoExportState = ""
 
 local function CheckAllResponsesReceived()
     local rc = GetRC()
-    local ml = rc and rc:GetModule("RCMLCore", true)
+    local ml = GetMLModule(rc)
     if ml and ml.isHistoricalLoad then return end
 
     local sessions = BuildSessionsFromLootTable()
@@ -400,6 +410,23 @@ local function CheckAllResponsesReceived()
     end
 end
 
+-- Council votes (up-votes) mutate candidate `votes`/`voters` WITHOUT changing
+-- `response`, and RC applies them via a direct table write inside HandleVote
+-- (not through SetCandidateData). So the response-driven auto-save above never
+-- re-fires when votes change, and a previously auto-saved entry can keep a
+-- stale `votes = 0` snapshot. This debounced refresh re-captures the live loot
+-- table and lets SaveSessions' 5-min dedup UPDATE the recent entry in place
+-- with the current votes. Silent: no chat spam on every vote.
+local _voteRefreshPending = false
+local function RefreshCurrentSessionVotes()
+    local ml = GetMLModule()
+    if ml and ml.isHistoricalLoad then return end   -- never re-save a restored session
+    if not GMLootHistory then return end
+    local sessions = BuildSessionsFromLootTable()
+    if not sessions or #sessions == 0 then return end
+    GMLootHistory:SaveSessions(sessions, true)       -- silent; dedup refreshes votes
+end
+
 -- Forward declarations: these functions are defined further below but referenced
 -- inside the badge OnClick closure in AddSaveButton (see TryHookRC). Without the
 -- forward decl, Lua would resolve the reference to _G.SaveAndReload (= nil).
@@ -434,6 +461,21 @@ local function TryHookRC()
                     C_Timer.After(1, function()
                         _checkPending = false
                         CheckAllResponsesReceived()
+                    end)
+                end
+            end)
+        end
+
+        -- Hook on HandleVote: council up-votes don't touch `response`, so the
+        -- hook above misses them. Debounced silent refresh keeps the saved
+        -- snapshot's votes current (see RefreshCurrentSessionVotes).
+        if type(vf.HandleVote) == "function" then
+            hooksecurefunc(vf, "HandleVote", function()
+                if not _voteRefreshPending then
+                    _voteRefreshPending = true
+                    C_Timer.After(2, function()
+                        _voteRefreshPending = false
+                        RefreshCurrentSessionVotes()
                     end)
                 end
             end)
@@ -503,9 +545,9 @@ local function TryHookRC()
         end
     end
 
-    -- MLCore: awarding
-    local ok2, ml = pcall(function() return rc:GetModule("RCMLCore") end)
-    if ok2 and ml then
+    -- ML module: awarding. RC's ML method is RCLootCouncilML:Award(session, winner, ...).
+    local ml = GetMLModule(rc)
+    if ml then
         local _ = hookMethod(ml, "Award") or hookMethod(ml, "AwardItem")
     end
 end
@@ -666,7 +708,7 @@ local function DoSaveAndReload(sessions)
         return
     end
 
-    local saved = GMLootHistory:SaveSessions(sessions, true)
+    local saved, savedIds = GMLootHistory:SaveSessions(sessions, true)
     if saved <= 0 then
         print(PREFIX .. " |cFFFFAA00No session saved (deduplicated).|r")
         return
@@ -675,6 +717,11 @@ local function DoSaveAndReload(sessions)
     local ts = GMLootHistory:GetLatestTimestamp()
     local db = RCLootCouncil_GuildMasteryDB or {}
     db.pendingRestore = {
+        -- Restore EXACTLY the entries we just saved, by their stable id. This is
+        -- robust against timestamp collisions / second-boundary splits that the
+        -- old `timestamp ==` match suffered from (could restore a subset or the
+        -- wrong duplicate). `sessionTimestamp` is kept as a legacy fallback.
+        ids              = savedIds,
         sessionTimestamp = ts,
         savedAt          = time(),
     }
@@ -754,12 +801,26 @@ CheckPendingRestore = function()
         DebugPrint("pendingRestore too old (" .. age .. "s) - ignored.")
         return
     end
-    if not pending.sessionTimestamp or pending.sessionTimestamp == 0 then return end
+    -- Build a lookup of the ids we saved just before the reload (preferred path).
+    local idSet = nil
+    if type(pending.ids) == "table" and #pending.ids > 0 then
+        idSet = {}
+        for _, id in ipairs(pending.ids) do idSet[id] = true end
+    end
+    -- Legacy fallback: entries with no id set and no captured ids rely on the
+    -- old timestamp match. Bail only if we have neither selector.
+    if not idSet and (not pending.sessionTimestamp or pending.sessionTimestamp == 0) then return end
 
     local hist = (db.history or {})
     local items = {}
     for _, e in ipairs(hist) do
-        if e.timestamp == pending.sessionTimestamp
+        local selected
+        if idSet then
+            selected = e.id and idSet[e.id]
+        else
+            selected = (e.timestamp == pending.sessionTimestamp)
+        end
+        if selected
            and e.item_link_raw and e.item_link_raw ~= ""
            and (not e.awarded_to or e.awarded_to == "") then
             table.insert(items, e)
@@ -820,6 +881,108 @@ local function ExportLastHistorySession()
     end
 end
 
+-- ============================================================
+-- /gm testrestore : offline diagnostic for the save -> reload -> restore
+-- vote-preservation path, WITHOUT a raid or a live RC session.
+--
+-- It fabricates a session with votes, runs the real SaveSessions (dedup + id
+-- capture), then replays the exact CheckPendingRestore selection (by id) and
+-- diffs the restored candidate data against the original. Weaknesses A (votes)
+-- and B (which entries get restored) are both exercised. The live VotingFrame
+-- injection itself still needs a real session (test in a party / with an alt).
+--
+-- The real history is snapshotted and restored, so nothing is persisted.
+-- ============================================================
+local function RunTestRestore()
+    if not GMLootHistory or not GMLootHistory.SaveSessions then
+        print(PREFIX .. " |cFFFF4444History module not loaded.|r")
+        return
+    end
+    local db = RCLootCouncil_GuildMasteryDB or {}
+    RCLootCouncil_GuildMasteryDB = db
+
+    -- Snapshot real history so the test never pollutes the DB / sync payload.
+    local backup = db.history
+    db.history = {}
+
+    local ok, err = pcall(function()
+        -- 1) Fabricate a session with responses AND council votes.
+        local fakeSessions = {
+            {
+                session = 1, item = "Test Item Alpha",
+                item_link_raw = "|cffa335ee|Hitem:99001::::::::80:0::::::|h[Test Item Alpha]|h|r",
+                item_id = 99001, item_ilvl = 639,
+                awarded_to = "", boss = "TestBoss",
+                difficulty_id = 16, difficulty_name = "Mythic",
+                candidates = {
+                    { name = "Ashkandi-Test",  class = "WARRIOR", role = "MELEE",  rank = "Officer",
+                      response = "MainSpec", response_code = "1", votes = 3, voters = {"Ged-Test","Ashkandi-Test","Moro-Test"} },
+                    { name = "Moro-Test",      class = "MAGE",    role = "RANGED", rank = "Raider",
+                      response = "MainSpec", response_code = "1", votes = 1, voters = {"Moro-Test"} },
+                    { name = "Ged-Test",       class = "PALADIN", role = "MELEE",  rank = "Guild Master",
+                      response = "OffSpec",  response_code = "2", votes = 0, voters = {} },
+                },
+            },
+        }
+        -- Expected fingerprint: name -> "votes|voters".
+        local expected = {}
+        for _, c in ipairs(fakeSessions[1].candidates) do
+            expected[c.name] = tostring(c.votes) .. "|" .. table.concat(c.voters, ",")
+        end
+
+        -- 2) Save (real dedup + id capture).
+        local saved, savedIds = GMLootHistory:SaveSessions(fakeSessions, true)
+        print(PREFIX .. string.format(" |cFFFFD700[testrestore]|r saved=%d ids=%d", saved, savedIds and #savedIds or 0))
+        if not savedIds or #savedIds == 0 then
+            print(PREFIX .. " |cFFFF4444[testrestore] FAIL: SaveSessions returned no ids.|r")
+            return
+        end
+
+        -- 3) Replay CheckPendingRestore's selection (restore by id, unawarded).
+        local idSet = {}
+        for _, id in ipairs(savedIds) do idSet[id] = true end
+        local restored = {}
+        for _, e in ipairs(db.history) do
+            if e.id and idSet[e.id] and e.item_link_raw ~= ""
+               and (not e.awarded_to or e.awarded_to == "") then
+                table.insert(restored, e)
+            end
+        end
+        print(PREFIX .. string.format(" |cFFFFD700[testrestore]|r selected %d entry(ies) for restore", #restored))
+
+        -- 4) Diff restored candidate votes/voters vs expected.
+        local fails = 0
+        for _, e in ipairs(restored) do
+            for _, c in ipairs(e.candidates or {}) do
+                local got = tostring(c.votes or 0) .. "|" .. table.concat(c.voters or {}, ",")
+                local exp = expected[c.name]
+                if exp == nil then
+                    -- ignore candidates not part of the fixture
+                elseif got ~= exp then
+                    fails = fails + 1
+                    print(PREFIX .. string.format(" |cFFFF4444  MISMATCH %s: got [%s] expected [%s]|r", c.name, got, exp))
+                else
+                    print(PREFIX .. string.format(" |cFF88FF88  OK %s: %s|r", c.name, got))
+                end
+            end
+        end
+
+        if #restored == 0 then
+            print(PREFIX .. " |cFFFF4444[testrestore] FAIL: nothing selected (restore-by-id broken).|r")
+        elseif fails == 0 then
+            print(PREFIX .. " |cFF88FF88[testrestore] PASS: votes/voters preserved through save+restore.|r")
+        else
+            print(PREFIX .. string.format(" |cFFFF4444[testrestore] FAIL: %d mismatch(es).|r", fails))
+        end
+    end)
+
+    -- Always restore the real history, even on error.
+    db.history = backup
+    if not ok then
+        print(PREFIX .. " |cFFFF4444[testrestore] error: |r" .. tostring(err))
+    end
+end
+
 SLASH_GUILDMASTERY1 = "/guildmastery"
 SLASH_GUILDMASTERY2 = "/gm"
 
@@ -837,6 +1000,8 @@ SlashCmdList["GUILDMASTERY"] = function(msg)
         end
     elseif cmd == "dump" then
         DebugDump()
+    elseif cmd == "testrestore" or cmd == "test" then
+        RunTestRestore()
     elseif cmd == "debug" or cmd == "debug-toggle" or cmd == "debug-on" or cmd == "debug-off" or cmd == "dbg" then
         local db = RCLootCouncil_GuildMasteryDB
         if not db then
@@ -860,6 +1025,7 @@ SlashCmdList["GUILDMASTERY"] = function(msg)
         print("  |cFFFFD700/gm export|r    - export votes as JSON (+ auto-save)")
         print("  |cFFFFD700/gm history|r   - open the session history")
         print("  |cFFFFD700/gm dump|r      - dump all candidates to the chat")
+        print("  |cFFFFD700/gm testrestore|r - offline save/restore vote-preservation self-test")
         print("  |cFFFFD700/gm debug|r     - toggle debug logging (off by default)")
         print("  Alias: |cFFAAAAFF/guildmastery|r")
     end

@@ -37,7 +37,7 @@ World of Warcraft/_retail_/WTF/Account/<ACCOUNT_NAME>/SavedVariables/RCLootCounc
 **Environment**
 - Addon version: <!-- e.g. 1.0.0, see /gm or the in-game addon list -->
 - RCLootCouncil version: <!-- see in-game addon list -->
-- WoW version: <!-- e.g. 12.0.5 (retail) -->
+- WoW version: <!-- e.g. 12.1.0 (retail) -->
 - Other relevant addons: <!-- e.g. ElvUI, WeakAuras, other RCLootCouncil plugins, ... -->
 
 **Additional context**

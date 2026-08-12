@@ -154,21 +154,31 @@ local function UpdateRecentDuplicate(s, matched)
                     e.difficulty_name = s.difficulty_name or e.difficulty_name or ""
                 end
                 matched[i] = true   -- prevents another item from this batch matching the same entry
-                return true
+                return true, e.id
             end
         end
     end
     return false
 end
 
+-- Returns: count, savedIds
+--   count    : number of sessions written (inserted or merged)
+--   savedIds : array of the stable `id`s of every entry written this call.
+--              Used by the reload flow to restore EXACTLY this batch by id,
+--              instead of the fragile `timestamp ==` match (which could pick a
+--              subset or a colliding duplicate).
 function GMLootHistory:SaveSessions(sessions, dedup)
-    if not sessions or #sessions == 0 then return 0 end
+    if not sessions or #sessions == 0 then return 0, {} end
     local count = 0
+    local savedIds = {}
     local matched = {}   -- indices already updated in this batch
     for _, s in ipairs(sessions) do
-        if dedup and UpdateRecentDuplicate(s, matched) then
+        local updated, updatedId = false, nil
+        if dedup then updated, updatedId = UpdateRecentDuplicate(s, matched) end
+        if updated then
             -- Entry was updated (merge).
             count = count + 1
+            if updatedId then table.insert(savedIds, updatedId) end
         else
             -- New entry.
             _saveCounter = _saveCounter + 1
@@ -177,8 +187,10 @@ function GMLootHistory:SaveSessions(sessions, dedup)
             -- Stable, deterministic id (SHARED formula with the server and the
             -- companion: `${looted_at}_${session}_${item_id}`). `created_at` is
             -- frozen at creation; `timestamp` acts as updated_at (mutated).
+            local newId = ts .. "_" .. (s.session or 0) .. "_" .. (s.item_id or 0)
+            table.insert(savedIds, newId)
             table.insert(GetDB().history, {
-                id            = ts .. "_" .. (s.session or 0) .. "_" .. (s.item_id or 0),
+                id            = newId,
                 created_at    = ts,
                 timestamp     = ts,
                 date          = string.format("%02d/%02d/%04d", t.day, t.month, t.year),
@@ -206,7 +218,7 @@ function GMLootHistory:SaveSessions(sessions, dedup)
         RCLootCouncil_GuildMastery_UpdateSyncPayload()
     end
 
-    return count
+    return count, savedIds
 end
 
 -- Styled button factory. Replaces UIPanelButtonTemplate (whose default red

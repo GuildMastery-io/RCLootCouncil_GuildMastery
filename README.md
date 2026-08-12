@@ -1,5 +1,5 @@
 [![GitHub release](https://img.shields.io/github/v/release/GuildMastery-io/RCLootCouncil_GuildMastery?include_prereleases&label=release)](https://github.com/GuildMastery-io/RCLootCouncil_GuildMastery/releases)
-[![WoW Retail](https://img.shields.io/badge/WoW-12.0.5-F8B700?logo=battle.net&logoColor=white)](https://worldofwarcraft.com/)
+[![WoW Retail](https://img.shields.io/badge/WoW-12.1.0-F8B700?logo=battle.net&logoColor=white)](https://worldofwarcraft.com/)
 [![Discord](https://img.shields.io/badge/Discord-join-7289DA?logo=discord&logoColor=white)](https://discord.gg/AVRSs9P2Xk)
 [![Website](https://img.shields.io/badge/website-guildmastery.io-9B7EDE)](https://www.guildmastery.io)
 
@@ -27,6 +27,7 @@ A [RCLootCouncil](https://github.com/evil-morfar/RCLootCouncil2) extension that 
 | `/gm export_active` | Export the currently active voting session |
 | `/gm history` | Open/close the history window |
 | `/gm dump` | Dump the current loot table candidates in chat (diagnostics) |
+| `/gm testrestore` | Offline self-test of the save/reload vote-preservation path (diagnostics) |
 | `/gm debug` | Toggle debug logging on/off (off by default) |
 
 Alias: `/guildmastery`.
@@ -37,8 +38,8 @@ Drop the `RCLootCouncil_GuildMastery` folder into `Interface\AddOns\` and reload
 
 ## Requirements
 
-- World of Warcraft Retail — The War Within 12.0.5 (build 67602), Interface `120005`
-- `RCLootCouncil` >= 3.21.1
+- World of Warcraft Retail — 12.1.0 (build 69273), Interface `120100`
+- `RCLootCouncil` >= 3.21.1 (verified through 3.23.0)
 
 ## JSON export schema
 
