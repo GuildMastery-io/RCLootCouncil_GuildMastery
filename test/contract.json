@@ -1,0 +1,24 @@
+{
+  "description": "RCLootCouncil API symbols RCLootCouncil_GuildMastery depends on. contract.js scans a target RC folder and flags any that disappeared or were renamed (the class of breakage the 'RCMLCore' bug was). Patterns are JS regexes tested against the concatenated .lua sources.",
+  "symbols": [
+    { "name": "module RCVotingFrame",            "pattern": "NewModule\\s*\\(\\s*[\"']RCVotingFrame[\"']",        "note": "GM does rc:GetModule('RCVotingFrame')" },
+    { "name": "module RCLootCouncilML",          "pattern": "NewModule\\s*\\(\\s*[\"']RCLootCouncilML[\"']",      "note": "real ML module; GM reaches it via GetActiveModule('masterlooter')" },
+    { "name": "module type masterlooter",        "pattern": "masterlooter\\s*=\\s*[\"']RCLootCouncilML[\"']",     "note": "GetActiveModule('masterlooter') mapping" },
+    { "name": "module type votingframe",         "pattern": "votingframe\\s*=\\s*[\"']RCVotingFrame[\"']",        "note": "module type mapping" },
+    { "name": "VotingFrame:ReceiveLootTable",    "pattern": "function\\s+RCVotingFrame:ReceiveLootTable",         "note": "restore injection entry point" },
+    { "name": "VotingFrame:Setup",               "pattern": "function\\s+RCVotingFrame:Setup\\b",                 "note": "the added-gate that preserves injected candidates" },
+    { "name": "VotingFrame:SetupSession",        "pattern": "function\\s+RCVotingFrame:SetupSession",             "note": "resets candidates when not added" },
+    { "name": "VotingFrame:SetCandidateData",    "pattern": "function\\s+RCVotingFrame:SetCandidateData",         "note": "GM hooks this for the response auto-save" },
+    { "name": "VotingFrame:HandleVote",          "pattern": "function\\s+RCVotingFrame:HandleVote",               "note": "GM hooks this for the vote auto-save (weakness A fix)" },
+    { "name": "VotingFrame:GetLootTable",        "pattern": "function\\s+RCVotingFrame:GetLootTable",             "note": "GM reads the live loot table via this (marked DEPRECATED in 3.23.0)" },
+    { "name": "ML:Award",                        "pattern": "function\\s+RCLootCouncilML:Award\\b",               "note": "GM hooks Award/AwardItem" },
+    { "name": "ML:GetItemInfo",                  "pattern": "function\\s+RCLootCouncilML:GetItemInfo",            "note": "GM merges item info into the injected ML lootTable" },
+    { "name": "ML:UnTrackAndLogLoot",            "pattern": "function\\s+RCLootCouncilML:UnTrackAndLogLoot",      "note": "used by the unaward flow" },
+    { "name": "RCLootCouncil:GetTypeCodeForItem","pattern": "function\\s+RCLootCouncil:GetTypeCodeForItem",       "note": "typeCode for injected items" },
+    { "name": "RCLootCouncil:GetHistoryDB",      "pattern": "function\\s+RCLootCouncil:GetHistoryDB",             "note": "unaward reads RC's own history" },
+    { "name": "RCLootCouncil:GetActiveModule",   "pattern": "function\\s+RCLootCouncil:GetActiveModule",          "note": "how GM/History reach the ML module" },
+    { "name": "candidate field voters",          "pattern": "voters\\s*=\\s*\\{\\}",                              "note": "SetupCandidate default; GM reads d.voters" },
+    { "name": "candidate field votes",           "pattern": "votes\\s*=\\s*0",                                    "note": "SetupCandidate default; GM reads d.votes" },
+    { "name": "candidate field real_response",   "pattern": "[\"']real_response[\"']",                            "note": "set on award; GM reads d.real_response for unaward" }
+  ]
+}

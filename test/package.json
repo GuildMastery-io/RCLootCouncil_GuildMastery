@@ -1,0 +1,17 @@
+{
+  "name": "rclc-gm-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local WoW+RCLootCouncil simulator to test RCLootCouncil_GuildMastery outside the game",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node run.js all",
+    "serve": "node server.js",
+    "contract": "node contract.js",
+    "realrc": "node realrc/load_real.js smoke",
+    "realrc:reload": "node realrc/load_real.js reload"
+  },
+  "dependencies": {
+    "fengari": "^0.1.4"
+  }
+}

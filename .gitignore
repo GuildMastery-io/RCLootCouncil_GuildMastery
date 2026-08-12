@@ -14,3 +14,10 @@ build/
 # OpenSpec workspace (local-only, not part of the addon distribution)
 openspec/
 .openspec/
+
+# Node deps (the test/ harness is versioned, but not its dependencies)
+node_modules/
+
+# Local tooling state
+.tokensave/
+.claude/

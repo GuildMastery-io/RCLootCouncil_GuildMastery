@@ -1,0 +1,6 @@
+# Dependencies (reinstall with `npm install`; package-lock.json is versioned)
+node_modules/
+
+# Generated / runtime output
+out/
+*.out

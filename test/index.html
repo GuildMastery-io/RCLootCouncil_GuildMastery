@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RCLC · GuildMastery — Simulateur</title>
+<style>
+  :root {
+    --stone:#0e0b07; --panel:#171208; --panel2:#1f180d; --panelhi:#2a2011;
+    --gold:#c8aa6e; --gold-dim:#8a7442; --border:#3a2e17;
+    --txt:#e7dcc4; --dim:#9c8f74; --accent:#a335ee;
+    --ok:#4ade80; --bad:#ff5555; --warn:#ffb454;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; color:var(--txt);
+    font:13px/1.5 "Segoe UI",system-ui,sans-serif;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #241b0e 0%, transparent 60%),
+      radial-gradient(900px 500px at 100% 100%, #1a140a 0%, transparent 50%),
+      #0b0906;
+  }
+  h1,h2,.wowfont { font-family:"Trajan Pro",Georgia,"Times New Roman",serif; letter-spacing:.02em; }
+
+  header {
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    padding:10px 18px; position:sticky; top:0; z-index:5;
+    background:linear-gradient(180deg,#241a0c,#120d06);
+    border-bottom:2px solid var(--gold-dim);
+    box-shadow:0 2px 12px #000a;
+  }
+  header h1 { font-size:17px; margin:0; color:var(--gold); text-shadow:0 1px 2px #000; }
+  header h1 small { color:var(--dim); font-weight:400; font-family:"Segoe UI",sans-serif; letter-spacing:0; }
+  .pills { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; }
+  .pill {
+    background:linear-gradient(180deg,#241c0f,#150f07); border:1px solid var(--border);
+    border-radius:4px; padding:3px 10px; font-size:12px; box-shadow:inset 0 1px 0 #ffffff0d;
+  }
+  .pill b { color:var(--gold); }
+  .pill.on { border-color:#3a6b3a; color:var(--ok); }
+  .pill.warn { border-color:#7a5a20; color:var(--warn); }
+
+  main { display:grid; grid-template-columns:250px 1fr 360px; gap:14px; padding:14px; align-items:start; }
+  .panel {
+    background:linear-gradient(180deg,#181206,#120d06);
+    border:1px solid var(--gold-dim); border-radius:6px; padding:12px;
+    box-shadow:inset 0 0 0 1px #000, inset 0 1px 0 #ffffff0a, 0 4px 14px #0007;
+  }
+  .panel > h2 {
+    margin:0 0 10px; font-size:12.5px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--gold); border-bottom:1px solid var(--border); padding-bottom:6px;
+  }
+  .sub { color:var(--dim); font-size:11px; }
+
+  button {
+    font:inherit; cursor:pointer; color:var(--txt);
+    background:linear-gradient(180deg,#2c2211,#1a1309); border:1px solid var(--gold-dim);
+    border-radius:4px; padding:6px 10px; transition:.12s; box-shadow:inset 0 1px 0 #ffffff10;
+  }
+  button:hover { border-color:var(--gold); color:#fff; box-shadow:inset 0 1px 0 #ffffff18, 0 0 8px #c8aa6e40; }
+  button.gold { background:linear-gradient(180deg,#4a3a17,#2c2110); border-color:var(--gold); color:#f4e9cf; font-weight:600; }
+  button.badge { background:linear-gradient(135deg,#6d4fb0,#a335ee); border-color:#c9a0ff; color:#fff; font-weight:600; }
+  button.sm { padding:3px 8px; font-size:11px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .grp { border-top:1px solid var(--border); margin-top:10px; padding-top:10px; }
+  select, input[type=text] {
+    background:#0e0a05; color:var(--txt); border:1px solid var(--border); border-radius:4px; padding:5px; width:100%;
+  }
+
+  /* loot pool */
+  .pool { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; }
+  .loot {
+    display:flex; gap:8px; align-items:center; padding:7px;
+    background:linear-gradient(180deg,#1c1509,#140e06); border:1px solid var(--border); border-radius:5px;
+  }
+  .icon {
+    width:38px; height:38px; flex:0 0 38px; display:grid; place-items:center; font-size:20px;
+    background:#0a0703; border-radius:5px; border:2px solid var(--iq,#a335ee);
+    box-shadow:0 0 6px -1px var(--iq,#a335ee);
+  }
+  .loot .meta { min-width:0; flex:1; }
+  .loot .nm { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .loot .bx { color:var(--dim); font-size:11px; }
+
+  /* voting frame */
+  .vf-item { border:1px solid var(--gold-dim); border-radius:6px; margin-bottom:12px; overflow:hidden; background:#0f0b06; }
+  .vf-head { display:flex; align-items:center; gap:10px; padding:8px 10px; background:linear-gradient(180deg,#241a0d,#160f07); border-bottom:1px solid var(--border); }
+  .vf-head .nm { font-weight:700; font-size:14px; }
+  .vf-head .ilvl { color:var(--gold); font-size:11px; border:1px solid var(--border); border-radius:3px; padding:0 5px; }
+  .vf-head .boss { color:var(--dim); font-size:11px; }
+  .vf-head .awd { margin-left:auto; font-size:11px; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { padding:6px 10px; border-top:1px solid #ffffff08; text-align:left; vertical-align:middle; }
+  thead th { color:var(--dim); font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; font-weight:600; background:#00000030; }
+  tbody tr:hover { background:#ffffff06; }
+  .resp { display:inline-block; padding:1px 8px; border-radius:3px; font-size:11px; border:1px solid; }
+  .votes { font-weight:800; font-size:15px; color:var(--gold); text-align:center; }
+  .voters { color:var(--dim); font-size:11px; }
+  .cand-actions { display:flex; gap:4px; justify-content:flex-end; }
+  .cname { font-weight:600; }
+
+  #log {
+    background:#080604; border:1px solid var(--border); border-radius:5px; height:230px; overflow:auto;
+    padding:8px; font:11.5px/1.55 "Cascadia Code",Consolas,monospace; white-space:pre-wrap; color:#c9c0ab;
+  }
+  #log .pass { color:var(--ok); } #log .fail { color:var(--bad); } #log .gm { color:#d8b4fe; }
+  .flash { animation:fl 1s ease; }
+  @keyframes fl { from{background:#4a3a1655;} to{background:transparent;} }
+  #contract { font:11px/1.5 monospace; white-space:pre-wrap; color:#c9c0ab; max-height:200px; overflow:auto; margin-top:6px; }
+  .hint { color:var(--dim); font-size:11px; font-style:italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚔ RCLootCouncil <small>· GuildMastery — simulateur</small></h1>
+  <div class="pills" id="pills"></div>
+</header>
+
+<main>
+  <!-- LEFT: controls -->
+  <section class="panel">
+    <h2>Maître du butin</h2>
+    <div class="row">
+      <button class="gold" onclick="cmd('login')">Se connecter</button>
+      <button onclick="cmd('reset')">Reset</button>
+    </div>
+    <div class="sub" style="margin-bottom:4px">Entrer en raid :</div>
+    <div class="row">
+      <button class="sm" onclick="cmd('enterRaid','Mythic')">Mythique</button>
+      <button class="sm" onclick="cmd('enterRaid','Heroic')">Héroïque</button>
+      <button class="sm" onclick="cmd('enterRaid','Normal')">Normal</button>
+    </div>
+
+    <div class="grp">
+      <div class="row"><button class="gold" style="width:100%" onclick="cmd('startDemo')">Ouvrir une session démo</button></div>
+      <div class="row"><button style="width:100%" onclick="cmd('populate','1')">Auto-remplir S1 (réponses + votes)</button></div>
+      <div class="row" style="align-items:center">
+        <span class="sub">Voter :</span>
+        <select id="voter" style="flex:1"></select>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="sub">Horloge virtuelle</div>
+      <div class="row">
+        <button class="sm" onclick="cmd('advance','30')">+30 s</button>
+        <button class="sm" onclick="cmd('advance','360')">+6 min</button>
+        <button class="sm" onclick="cmd('advance','3600')">+1 h</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <div class="sub">A · Recharger l'interface (le bug)</div>
+      <div class="row"><button class="badge" style="width:100%" onclick="cmd('badgeReload')">🏅 Save &amp; Reload (badge)</button></div>
+      <div class="row"><button class="gold" style="width:100%" onclick="cmd('relog')">↻ Relog (rouvre auto)</button></div>
+    </div>
+
+    <div class="grp">
+      <div class="sub">B · Fermer puis rouvrir via l'historique</div>
+      <div class="row"><button style="width:100%" onclick="cmd('endSession')">✖ Fermer la fenêtre de vote</button></div>
+      <div class="hint">→ ensuite, en bas dans « /gm history », clique <b>« Charger cette session »</b> pour la rouvrir avec les votes.</div>
+    </div>
+
+    <div class="grp">
+      <div class="sub">Scénarios auto</div>
+      <div class="row">
+        <button class="sm" onclick="cmd('scenario','smoke')">smoke</button>
+        <button class="sm" onclick="cmd('scenario','reload')">reload</button>
+        <button class="sm" onclick="cmd('scenario','dedup')">dedup</button>
+        <button class="sm" onclick="cmd('testrestore')">testrestore</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- MIDDLE: loot pool + voting frame -->
+  <section style="display:flex; flex-direction:column; gap:14px;">
+    <div class="panel">
+      <h2>Butin disponible <span class="hint">— clique « Annoncer » pour l'ajouter à la session</span></h2>
+      <div id="pool" class="pool"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Fenêtre de vote (état live du VotingFrame)</h2>
+      <div id="sessions"><p class="sub">Aucune session active. Ouvre une session démo ou annonce du butin.</p></div>
+      <div class="grp">
+        <div class="sub" style="margin-bottom:4px">Groupe / conseil</div>
+        <div id="group"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: log + contract -->
+  <section class="panel">
+    <h2>Journal de l'addon</h2>
+    <div id="log"></div>
+    <div class="grp">
+      <h2 style="border:0;padding:0;margin:0 0 6px">Vérif. contrat API RC</h2>
+      <p class="hint">Scanne un dossier RCLootCouncil et vérifie que GuildMastery a tout ce dont il dépend.</p>
+      <div class="row"><input type="text" id="rcdir" value="C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\RCLootCouncil"></div>
+      <div class="row"><button class="gold" onclick="contract()">Lancer la vérif</button></div>
+      <div id="contract"></div>
+    </div>
+  </section>
+</main>
+
+<!-- HISTORY -->
+<section class="panel" style="margin:0 14px 16px">
+  <h2>📜 /gm history — sessions enregistrées (dates / loots / attributions)</h2>
+  <div class="row">
+    <button class="gold" onclick="exportSV()">💾 Exporter SavedVariables (.lua)</button>
+    <span id="svpath" class="sub" style="align-self:center"></span>
+  </div>
+  <div id="history"><p class="sub">Aucune session enregistrée. Attribue des items ou fais Save &amp; Reload.</p></div>
+</section>
+
+<script>
+const CLASS_COLORS = {
+  WARRIOR:"#C69B6D", PALADIN:"#F48CBA", HUNTER:"#AAD372", ROGUE:"#FFF468", PRIEST:"#FFFFFF",
+  DEATHKNIGHT:"#C41E3A", SHAMAN:"#0070DD", MAGE:"#3FC7EB", WARLOCK:"#8788EE", MONK:"#00FF98",
+  DRUID:"#FF7C0A", DEMONHUNTER:"#A330C9", EVOKER:"#33937F", Unknown:"#cccccc" };
+const QUALITY = {0:"#9d9d9d",1:"#ffffff",2:"#1eff00",3:"#0070dd",4:"#a335ee",5:"#ff8000"};
+const RESP_STYLE = (r) => {
+  const s = { bg:"#1a1a1a", fg:"#aaa", b:"#333" };
+  if (/Need|MainSpec/i.test(r)) return { bg:"#12250f", fg:"#7fe08a", b:"#2e6b2e" };
+  if (/Greed|OffSpec/i.test(r)) return { bg:"#2a2410", fg:"#f4c752", b:"#6b5e2e" };
+  if (/Pass/i.test(r))          return { bg:"#1a1a1a", fg:"#888", b:"#333" };
+  if (/Announced/i.test(r))     return { bg:"#111d2a", fg:"#7aa5d6", b:"#2e4a6b" };
+  if (/Wait/i.test(r))          return { bg:"#1e1830", fg:"#b39ae0", b:"#4a3a6b" };
+  return s;
+};
+const cc = c => CLASS_COLORS[c] || "#cccccc";
+const shortN = n => String(n).split("-")[0];
+const esc = s => String(s).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+let STATE = null;
+
+async function cmd(action, ...args) {
+  const r = await fetch('/api/cmd', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ action, args }) });
+  const j = await r.json();
+  if (j.state) render(j.state);
+  appendLog(j.log || []);
+}
+function appendLog(lines) {
+  const el = document.getElementById('log');
+  for (const ln of lines) {
+    const div = document.createElement('div');
+    div.className = /\[PASS\]|PASS:/.test(ln) ? 'pass'
+      : /\[FAIL\]|FAIL|\[ERR|error/i.test(ln) ? 'fail'
+      : /GuildMastery/.test(ln) ? 'gm' : '';
+    div.textContent = ln; el.appendChild(div);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+const pill = (l, v, cls='') => `<span class="pill ${cls}">${l} <b>${esc(v)}</b></span>`;
+
+function render(s) {
+  STATE = s;
+  document.getElementById('pills').innerHTML =
+    pill('⏱', s.clock) +
+    pill('Raid', (s.zone||'—') + ' · ' + (s.difficulty||'—')) +
+    pill('Historique', s.historyCount) +
+    (s.mlRunning ? pill('ML', 'session active', 'on') : pill('ML', 'inactif')) +
+    (s.historical ? pill('mode', 'restauré', 'warn') : '') +
+    (s.reloadReq ? pill('Reload', 'demandé', 'warn') : '') +
+    (s.pending ? pill('pendingRestore', s.pendingIds + ' id(s)', 'warn') : '');
+
+  const vsel = document.getElementById('voter'), cur = vsel.value;
+  vsel.innerHTML = s.group.map(g => `<option value="${esc(g.name)}">${esc(shortN(g.name))}</option>`).join('');
+  if (cur) vsel.value = cur;
+  document.getElementById('group').innerHTML = s.group.map(g =>
+    `<span style="color:${cc(g.class)};margin-right:12px;font-weight:600">${esc(shortN(g.name))}</span>`).join('') || '—';
+
+  // loot pool
+  document.getElementById('pool').innerHTML = (s.loot||[]).map(it => `
+    <div class="loot">
+      <div class="icon" style="--iq:${QUALITY[it.quality]||'#a335ee'}">${it.icon||'❓'}</div>
+      <div class="meta">
+        <div class="nm" style="color:${QUALITY[it.quality]||'#a335ee'}">${esc(it.name)}</div>
+        <div class="bx">i${it.ilvl} · ${esc(it.slot||'')} · ${esc(it.boss||'')}</div>
+      </div>
+      <button class="sm gold" onclick="cmd('addItem','${it.id}')">Annoncer</button>
+    </div>`).join('');
+
+  renderSessions(s.sessions || []);
+  renderHistory(s.history || []);
+}
+
+function renderSessions(sessions) {
+  const host = document.getElementById('sessions');
+  if (!sessions.length) { host.innerHTML = '<p class="sub">Aucune session active.</p>'; return; }
+  host.innerHTML = sessions.map(sess => {
+    const q = QUALITY[sess.quality] || '#a335ee';
+    const rows = sess.candidates.map(c => {
+      const st = RESP_STYLE(c.response);
+      return `<tr>
+        <td class="cname" style="color:${cc(c.class)}">${esc(shortN(c.name))}</td>
+        <td><span class="resp" style="background:${st.bg};color:${st.fg};border-color:${st.b}">${esc(c.response)}</span></td>
+        <td class="votes">${c.votes||0}${c.haveVoted?' ✓':''}</td>
+        <td class="voters">${esc((c.voters||[]).map(shortN).join(', '))}</td>
+        <td class="cand-actions">
+          <button class="sm" title="réponse Need" onclick="cmd('setResponse','${sess.session}','${esc(c.name)}','1')">Need</button>
+          <button class="sm" title="réponse Greed" onclick="cmd('setResponse','${sess.session}','${esc(c.name)}','2')">Greed</button>
+          <button class="sm" title="voter pour ce candidat" onclick="voteFor('${sess.session}','${esc(c.name)}')">▲</button>
+          <button class="sm gold" title="attribuer l'objet" onclick="cmd('award','${sess.session}','${esc(c.name)}')">🏆</button>
+        </td>
+      </tr>`; }).join('');
+    return `<div class="vf-item">
+      <div class="vf-head">
+        <div class="icon" style="--iq:${q};width:30px;height:30px;flex-basis:30px;font-size:16px">${sess.icon||'❓'}</div>
+        <span class="wowfont nm" style="color:${q}">${esc(sess.item)}</span>
+        <span class="ilvl">i${sess.ilvl||'?'}</span>
+        <span class="boss">${esc(sess.boss||'')}</span>
+        <span class="awd ${sess.awarded?'':'sub'}">${sess.awarded?('🏆 '+esc(shortN(sess.awarded))):'session '+sess.session+' · non attribué'}</span>
+      </div>
+      <table>
+        <thead><tr><th>Candidat</th><th>Réponse</th><th style="text-align:center">Votes</th><th>Ont voté</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+  }).join('');
+  document.querySelectorAll('.votes').forEach(e => { e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); });
+}
+
+function renderHistory(hist) {
+  const host = document.getElementById('history');
+  if (!hist.length) { host.innerHTML = '<p class="sub">Aucune session enregistrée.</p>'; return; }
+  const byDate = {};
+  for (const e of hist) (byDate[e.date] = byDate[e.date] || []).push(e);
+  host.innerHTML = Object.keys(byDate).sort().reverse().map(date => {
+    const entries = byDate[date];
+    const rows = entries.map(e => {
+      const top = (e.candidates||[]).slice().sort((a,b)=>b.votes-a.votes)[0];
+      return `<tr>
+        <td>${esc(e.item)} <span class="sub">i${e.ilvl}</span></td>
+        <td class="sub">${esc(e.difficulty||'')}</td>
+        <td>${e.awarded ? ('<span style="color:var(--gold)">🏆 '+esc(shortN(e.awarded))+'</span>') : '<span class="sub">non attribué</span>'}</td>
+        <td class="sub">${(e.candidates||[]).length} cand · top ${top?esc(shortN(top.name))+' ('+top.votes+'v)':'—'}</td>
+      </tr>`; }).join('');
+    return `<div class="vf-item">
+      <div class="vf-head">🗓 <b>${esc(date)}</b> · <span class="boss">${esc(entries[0].instance||'')}</span> · ${entries.length} loot(s)
+        <button class="sm gold awd" style="margin-left:auto" onclick="cmd('loadDate','${esc(date)}')">↻ Charger cette session</button></div>
+      <table><thead><tr><th>Loot</th><th>Diff.</th><th>Attribution</th><th>Votes</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }).join('');
+}
+
+function voteFor(session, name) {
+  const voter = document.getElementById('voter').value || (STATE && STATE.group[0] && STATE.group[0].name);
+  cmd('vote', voter, session, name);
+}
+async function exportSV() {
+  const r = await fetch('/api/export'); const j = await r.json();
+  document.getElementById('svpath').textContent = j.ok ? ('→ ' + j.path + ' (' + j.bytes + ' o)') : ('erreur: ' + j.error);
+}
+async function contract() {
+  const dir = document.getElementById('rcdir').value.trim();
+  const el = document.getElementById('contract'); el.textContent = 'Scan en cours…';
+  const r = await fetch('/api/contract' + (dir ? ('?dir=' + encodeURIComponent(dir)) : ''));
+  const j = await r.json(); el.textContent = j.text || '(aucune sortie)';
+}
+cmd('state');
+</script>
+</body>
+</html>
