@@ -518,10 +518,18 @@ function GMLootHistory:InjectItemsIntoVF(items, opts)
                     if type(c.voters) == "table" then
                         for _, v in ipairs(c.voters) do table.insert(votersList, v) end
                     end
+                    -- Derive the role from the spec when the stored role is
+                    -- missing/NONE (RC freezes candidate.role but keeps specID
+                    -- fresh, so old entries often carry role "NONE" + a valid
+                    -- spec). Falls back to the stored value if no resolver.
+                    local resolvedRole = c.role or "NONE"
+                    if RCLootCouncil_GuildMastery_ResolveRole then
+                        resolvedRole = RCLootCouncil_GuildMastery_ResolveRole(c.role, c.spec_id)
+                    end
                     sessionEntry.candidates[c.name] = {
                         class    = c.class   or "WARRIOR",
                         rank     = c.rank    or "",
-                        role     = c.role    or "NONE",
+                        role     = resolvedRole,
                         response = rcResp,
                         ilvl     = c.ilvl    or "",
                         diff     = c.ilvl_diff or "",

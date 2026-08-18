@@ -117,6 +117,11 @@ end
 function ML:Award(session, winner)
     local s = self.lootTable[session]
     if s then s.awarded = winner or true end
+    -- Mirror RC: the VotingFrame's lootTable session is ALSO marked awarded on a
+    -- successful award. This is the field BuildSessionsFromLootTable reads to
+    -- capture awarded_to, so the mock must set it for the award to be persisted.
+    local vs = VF.__lt and VF.__lt[session]
+    if vs then vs.awarded = winner or true end
     return true
 end
 function ML:UnTrackAndLogLoot() return true end

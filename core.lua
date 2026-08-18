@@ -254,6 +254,26 @@ local function getResponseLabel(rc, typeCode, code)
     return RESPONSE_DEFAULTS[s] or s
 end
 
+-- Resolve a usable role token for a candidate.
+-- RC freezes candidate.role in SetupCandidate (= player.role at announce time,
+-- "NONE" when the raider's playerinfo has not arrived yet) and NEVER refreshes
+-- it afterwards -- even though it DOES keep specID up to date live via
+-- OnLootAckReceived. So a candidate can legitimately carry role "NONE" while its
+-- spec is perfectly known. When the stored role is missing/NONE we derive it
+-- from the spec, so both the saved history and the reload display show
+-- Tank/Healer/DPS instead of "None".
+local function ResolveRole(role, specID)
+    if role and role ~= "" and role ~= "NONE" then return role end
+    local sid = tonumber(specID)
+    if sid and sid > 0 and GetSpecializationInfoByID then
+        local ok, roleToken = pcall(function() return select(5, GetSpecializationInfoByID(sid)) end)
+        if ok and roleToken and roleToken ~= "" then return roleToken end
+    end
+    return (role and role ~= "") and role or "NONE"
+end
+-- Exposed so History.lua (reload path) can reuse the exact same logic.
+RCLootCouncil_GuildMastery_ResolveRole = ResolveRole
+
 -- ============================================================
 -- Build sessions from the RC lootTable
 -- ============================================================
@@ -313,7 +333,7 @@ local function BuildSessionsFromLootTable()
             table.insert(sessionExport.candidates, {
                 name               = name,
                 class              = d.class   or "",
-                role               = d.role    or "",
+                role               = ResolveRole(d.role, d.specID),
                 rank               = d.rank    or "",
                 spec_id            = d.specID  or 0,
                 response           = getResponseLabel(rc, typeCode, d.response),
@@ -349,12 +369,13 @@ end
 
 local function AutoSaveFromRC()
     local rc = GetRC()
-    local ml = GetMLModule(rc)
-    if ml and ml.isHistoricalLoad then
-        DebugPrint("AutoSave skipped because isHistoricalLoad is set.")
-        return
-    end
-
+    -- NOTE: intentionally NOT guarded by isHistoricalLoad. This runs only from
+    -- the Award / EndSession / SessionDone hooks (never from the reinjection
+    -- cascade, which fires SetCandidateData -> CheckAllResponsesReceived /
+    -- HandleVote -> RefreshCurrentSessionVotes -- both still guarded). So when
+    -- the ML awards an item in a RELOADED session, the award is persisted here
+    -- via the normal 5-min-dedup save, updating the reloaded entry in place --
+    -- exactly what the left-click (export_active) workaround did by hand.
     if not GMLootHistory then return end
     local sessions = BuildSessionsFromLootTable()
     if not sessions or #sessions == 0 then return end
@@ -379,9 +400,17 @@ local function CheckAllResponsesReceived()
     if not sessions or #sessions == 0 then return end
 
     local allResponded = true
+    -- stateHash must reflect the session CONTENT, not just its index. Using only
+    -- s.session made two consecutive single-item sessions both hash to "1-": if
+    -- all responses landed inside one debounce window (no intervening
+    -- not-all-responded pass to reset lastAutoExportState), the second session
+    -- collided with the first's saved state and was silently skipped -- so a
+    -- 1-item session produced no /gm history entry, while a 2-item session
+    -- ("1-2-") did. Including item_id + awarded_to makes distinct loot distinct.
     local stateHash = ""
     for _, s in ipairs(sessions) do
-        stateHash = stateHash .. s.session .. "-"
+        stateHash = stateHash .. s.session .. ":" .. tostring(s.item_id or 0)
+                              .. ":" .. (s.awarded_to or "") .. "-"
         for _, c in ipairs(s.candidates) do
             if c.response_code == "ANNOUNCED" or c.response_code == "WAIT" then
                 allResponded = false
@@ -546,6 +575,8 @@ local function TryHookRC()
     end
 
     -- ML module: awarding. RC's ML method is RCLootCouncilML:Award(session, winner, ...).
+    -- The +0.5s AutoSaveFromRC (no longer isHistoricalLoad-guarded) persists the
+    -- award for BOTH live and reloaded sessions.
     local ml = GetMLModule(rc)
     if ml then
         local _ = hookMethod(ml, "Award") or hookMethod(ml, "AwardItem")

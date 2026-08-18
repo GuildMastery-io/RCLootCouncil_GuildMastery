@@ -187,11 +187,72 @@ function Scenarios.dedup()
     ok(saved == 3, "saved snapshot has current votes (3), not stale 0 (got " .. tostring(saved) .. ")")
 end
 
+-- Bug A: two consecutive SINGLE-ITEM sessions must BOTH save. stateHash used to
+-- encode only the session index, so both hashed to "1-"; when every response
+-- landed inside one debounce window (no not-all-responded pass to reset the
+-- guard), the second session collided with the first's saved state and was
+-- silently skipped -> no /gm history. A 2-item session ("1-2-") never collided,
+-- exactly matching the report (1 loot = no save, 2 loots = both saved).
+function Scenarios.singleitem()
+    print("== single-item session saves (no stateHash collision) ==")
+    resetDB()
+    Sim.enterRaid("Mythic")
+    Sim.login()
+
+    Sim.startSession({ { loot = Sim.loot[1], boss = Sim.loot[1].boss } })   -- 232800
+    for _, n in ipairs(Sim.group) do Sim.setResponse(1, n, 1, 640, 5) end
+    Sim.advance(2)
+    ok(countHistory(232800) == 1, "first single-item session saved")
+
+    -- A DIFFERENT single item, same fast-response pattern. Pre-fix this collided
+    -- with session 1's "1-" state and produced no entry.
+    Sim.startSession({ { loot = Sim.loot[3], boss = Sim.loot[3].boss } })   -- 232802
+    for _, n in ipairs(Sim.group) do Sim.setResponse(1, n, 1, 639, 5) end
+    Sim.advance(2)
+    ok(countHistory(232802) == 1, "second single-item session ALSO saved (no collision)")
+end
+
+-- Bug B: awarding an item in a RELOADED session must reach /gm history. RC's own
+-- history already recorded it; isHistoricalLoad used to suppress AutoSaveFromRC
+-- entirely so gm history kept the item unawarded (the ML had to force it by
+-- left-clicking the badge). AutoSaveFromRC is now unguarded -- it only ever runs
+-- from the Award/EndSession hooks, never the reinjection cascade.
+function Scenarios.reloadAward()
+    print("== award after reload persists to gm history ==")
+    resetDB()
+    Sim.enterRaid("Mythic")
+    Sim.login()
+
+    Sim.startSession({ { loot = Sim.loot[1], boss = Sim.loot[1].boss } })   -- 232800
+    for _, n in ipairs(Sim.group) do Sim.setResponse(1, n, 1, 640, 5) end
+    Sim.advance(2)
+    ok(countHistory(232800) == 1, "session saved before reload")
+
+    -- Reload: wipe the running session, then restore the entry into the VF.
+    Sim.relog()
+    local items = {}
+    for _, e in ipairs(RCLootCouncil_GuildMasteryDB.history) do items[#items + 1] = e end
+    GMLootHistory:InjectItemsIntoVF(items, { silent = true })
+    Sim.advance(2)
+    ok(Sim.ml.isHistoricalLoad == true, "isHistoricalLoad set after reinjection")
+
+    -- Award to Ged in the reloaded session -> Award hook -> AutoSaveFromRC.
+    Sim.ml:Award(1, "Ged-Uldaman")
+    Sim.advance(2)
+
+    ok(countHistory(232800) == 1, "no duplicate entry after reload-award")
+    local aw
+    for _, e in ipairs(RCLootCouncil_GuildMasteryDB.history) do
+        if e.item_id == 232800 then aw = e.awarded_to end
+    end
+    ok(aw == "Ged-Uldaman", "awarded_to persisted to gm history (got " .. tostring(aw) .. ")")
+end
+
 Sim.Scenarios = Scenarios   -- exposed for the web UI
 
 function Sim.run(_, cmd)
     cmd = cmd or "all"
-    local order = { "smoke", "testrestore", "reload", "dedup" }
+    local order = { "smoke", "testrestore", "reload", "dedup", "singleitem", "reloadAward" }
     local toRun = (cmd == "all") and order or { cmd }
     for _, name in ipairs(toRun) do
         local fn = Scenarios[name]
