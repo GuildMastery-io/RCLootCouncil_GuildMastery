@@ -41,7 +41,23 @@ jobs:
             exit 1
           fi
 
-      - name: Package + publish (GitHub release + CurseForge)
+      # BigWigsMods/packager uploads the zip to an EXISTING GitHub release; it does
+      # not create one. So create it first (idempotent) with the CHANGELOG section
+      # as notes, then the packager attaches the zip to it (and uploads to CurseForge).
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          NOTES="$(awk -v v="## ${VERSION}" 'index($0,v)==1{f=1;next} /^## /&&f{exit} f{print}' CHANGELOG.md)"
+          [ -z "$NOTES" ] && NOTES="RCLootCouncil_GuildMastery ${VERSION}"
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            echo "Release ${GITHUB_REF_NAME} already exists — packager will attach the zip."
+          else
+            gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "$NOTES"
+          fi
+
+      - name: Package + publish (attach zip to GitHub release + CurseForge)
         uses: BigWigsMods/packager@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
