@@ -11,3 +11,7 @@ ignore:
   - .pkgmeta
   - README.md
   - CHANGELOG.md
+  - LICENSE
+  - test/*
+  - .serena/*
+  - curseforge-description.txt

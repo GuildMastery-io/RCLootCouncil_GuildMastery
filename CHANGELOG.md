@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.1 — 2026-08-18
+
+### Fixes
+
+- **Single-item session no longer skips the "all votes in" save.** `CheckAllResponsesReceived` built its de-spam key (`stateHash`) from the session index only, so two consecutive single-item sessions both hashed to `"1-"`. When every response arrived within one debounce window (no intervening not-all-responded pass to reset the guard), the second session collided with the first's saved state and was silently skipped — leaving no `/gm history` entry to reopen after closing the frame. A 2-item session (`"1-2-"`) never collided, which is why the bug only showed with a single loot. `stateHash` now includes `item_id` + `awarded_to`, so distinct loot is always distinct.
+- **Awarding an item in a reloaded session now updates `/gm history`.** Restoring a session via `/gm history` sets `isHistoricalLoad`, which used to short-circuit **every** auto-save — so an award made on the reloaded session reached RCLootCouncil's own history but never `/gm history` (it kept showing the item as un-awarded; the only workaround was left-clicking the GuildMastery badge to force a save). The guard is now removed from `AutoSaveFromRC` only: it runs solely from the `Award`/`EndSession` hooks (never from the re-injection cascade, which still goes through the guarded `CheckAllResponsesReceived`/`RefreshCurrentSessionVotes`), so the award is persisted through the normal 5-minute-dedup save and updates the reloaded entry in place.
+- **Candidate roles no longer show "None" after a reload.** RCLootCouncil freezes `candidate.role` at announce time (`player.role or "NONE"`) and never refreshes it, even though it keeps `specID` up to date. Old/late entries therefore stored `role = "NONE"` while the spec was perfectly known, and the reload displayed "None". The role is now derived from the spec (`GetSpecializationInfoByID`) when the stored role is missing/NONE — applied both at save time and on reload.
+
+### Tooling
+
+- Offline test suite gains `singleitem` and `reloadAward` regression scenarios (both proven to fail without their fix); real-RC 3.23.0 reload harness and a headless web-API driver validate the same paths end-to-end.
+- **CI now publishes to CurseForge automatically** via `BigWigsMods/packager` (on each `vX.Y.Z` tag), in addition to the GitHub release.
+
 ## 1.4.0 — 2026-08-12
 
 ### Compatibility
