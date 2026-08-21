@@ -62,3 +62,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
+
+      # The packager reliably uploads to CurseForge but does NOT re-attach the zip
+      # to a release we pre-created above (it only attaches to releases it creates
+      # itself) -- so the GitHub release would otherwise have no downloadable zip.
+      # Attach it explicitly from .release/ where the packager left it. Idempotent.
+      - name: Attach packaged zip to GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ZIP="$(ls .release/*.zip 2>/dev/null | head -n1)"
+          if [ -z "$ZIP" ]; then
+            echo "::error::No packaged zip found in .release/ -- packager output changed?"
+            exit 1
+          fi
+          echo "Attaching $ZIP to ${GITHUB_REF_NAME}"
+          gh release upload "${GITHUB_REF_NAME}" "$ZIP" --clobber
