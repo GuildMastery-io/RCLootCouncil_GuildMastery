@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.2 — 2026-08-21
+
+### Fixes
+
+- Fixed a Lua error that could stop certain `/gm history` sessions from opening or reloading.
+- A player's vote reason (such as "upgrade") is no longer lost when you un-award an item.
+- Re-awarding an item from a reloaded session now records the award in RCLootCouncil's own history too, not just `/gm history`.
+- Players' notes are no longer all replaced by an empty note after reloading a session.
+
 ## 1.4.1 — 2026-08-18
 
 ### Fixes

@@ -156,6 +156,24 @@ end
 function RC:GetActiveModule(mtype) return modulesByType[mtype] end
 function RC:GetTypeCodeForItem() return "default" end
 function RC:GetHistoryDB() return self.lootDB.factionrealm end
+
+-- Mirror RC's award->history write (OnHistoryReceived appends to
+-- lootDB.factionrealm[winner]). Note the mock's ML:Award does NOT call this --
+-- exactly like RC's real native path fails to log a reinjected/detached
+-- session -- so this only ever fires from GuildMastery's own reconciliation
+-- (EnsureReloadedRCHistory), which is what we're testing.
+function ML:TrackAndLogLoot(winner, link, responseID, boss, reason, session, candData)
+    local db = RC.lootDB.factionrealm
+    db[winner] = db[winner] or {}
+    local entry = {
+        lootWon    = link,
+        id         = tostring(session) .. "-" .. tostring(#db[winner] + 1),
+        boss       = boss,
+        responseID = responseID,
+    }
+    table.insert(db[winner], entry)
+    return entry
+end
 function RC:GetClassColor() return { r = 0.8, g = 0.8, b = 0.8, colorStr = "ffcccccc" } end
 function RC:CreateTooltip() end
 function RC:HideTooltip() end

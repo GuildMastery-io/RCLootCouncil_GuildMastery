@@ -312,14 +312,21 @@ local function BuildSessionsFromLootTable()
         }
         local typeCode = sd.typeCode or sd.equipLoc or nil
         for name, d in pairs(sd.candidates) do
-            local responseCode = tostring(d.response or "")
             -- When an item is awarded, RC overwrites d.response with "AWARDED"
-            -- and stores the real vote response in d.real_response. We capture
-            -- it so we can restore the pre-award state on un-award.
+            -- and stashes the actual vote in d.real_response. RC's own history
+            -- keeps the award AND the response code side by side; we mirror that
+            -- (the award is tracked separately by awarded_to). So we persist the
+            -- REAL vote as the visible response, otherwise "AWARDED" would clobber
+            -- the "why" (e.g. upgrade) and we'd lose it -- especially on un-award.
             local realResponseCode = ""
             if d.real_response ~= nil then
                 realResponseCode = tostring(d.real_response)
             end
+            local effResponse = d.response
+            if tostring(d.response or "") == "AWARDED" and realResponseCode ~= "" then
+                effResponse = d.real_response
+            end
+            local responseCode = tostring(effResponse or "")
             local voterList = {}
             if type(d.voters) == "table" then
                 for _, v in ipairs(d.voters) do table.insert(voterList, tostring(v)) end
@@ -336,13 +343,13 @@ local function BuildSessionsFromLootTable()
                 role               = ResolveRole(d.role, d.specID),
                 rank               = d.rank    or "",
                 spec_id            = d.specID  or 0,
-                response           = getResponseLabel(rc, typeCode, d.response),
+                response           = getResponseLabel(rc, typeCode, effResponse),
                 response_code      = responseCode,
                 real_response_code = realResponseCode,
                 ilvl               = tonumber(d.ilvl)  or 0,
                 ilvl_diff          = tonumber(d.diff)  or 0,
-                roll               = d.roll    or 0,
-                votes              = d.votes   or 0,
+                roll               = tonumber(d.roll)  or 0,
+                votes              = tonumber(d.votes) or 0,
                 voters             = voterList,
                 note               = d.note    or "",
                 equipped           = equipped,
@@ -386,6 +393,12 @@ local function AutoSaveFromRC()
             " |cFF88FF88Auto-save: %d session(s) added to history.|r",
             saved
         ))
+    end
+    -- A reload+reaward updates /gm history above (we read the lootTable directly)
+    -- but RC's own /rc history write is unreliable for detached reloaded sessions.
+    -- Reconcile it here, symmetric to the un-award removal. Self-guarded & dedup.
+    if type(RCLootCouncil_GuildMastery_EnsureReloadedRCHistory) == "function" then
+        pcall(RCLootCouncil_GuildMastery_EnsureReloadedRCHistory)
     end
 end
 

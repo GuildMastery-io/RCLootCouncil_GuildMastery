@@ -98,6 +98,55 @@ local function RemoveFromRCHistory(playerName, itemLinkRaw)
     return false, "err"
 end
 
+-- Ensure awards made in a RELOADED session land in RC's own /rc history.
+--
+-- RC only writes /rc history from its award-popup callback -> TrackAndLogLoot,
+-- and that path is unreliable for a reinjected (detached, no lootSlot/bagged)
+-- session -- so a reload+reaward can update /gm history (we read the lootTable
+-- directly) while /rc history stays empty. This reconciles the two: for every
+-- reloaded session that now has a winner, if RC has no matching entry we write
+-- it ourselves via TrackAndLogLoot -- the symmetric counterpart to the
+-- UnTrackAndLogLoot we already do on un-award.
+--
+-- Dedup-safe (skips if RC already logged, via entry.history OR a lootDB match)
+-- and fully pcall-guarded so it can never break the award flow. Global so
+-- core.lua's AutoSaveFromRC (fired +0.5s after Award) can call it.
+function RCLootCouncil_GuildMastery_EnsureReloadedRCHistory()
+    local ml = GetRCML()                       -- nil unless we are the ML
+    if not ml or type(ml.TrackAndLogLoot) ~= "function" or type(ml.lootTable) ~= "table" then
+        return
+    end
+    local vf     = GetRCVF()
+    local vfLoot = nil
+    if vf and type(vf.GetLootTable) == "function" then
+        local okLT, lt = pcall(function() return vf:GetLootTable() end)
+        if okLT and type(lt) == "table" then vfLoot = lt end
+    end
+
+    for session, entry in pairs(ml.lootTable) do
+        if type(entry) == "table" and entry._gmReloaded
+           and entry.awarded and entry.awarded ~= false and entry.awarded ~= "" then
+            local winner = entry.awarded
+            -- Already logged? RC's callback stores the result on entry.history;
+            -- also double-check the DB in case that reference was lost.
+            local logged = (entry.history and entry.history.id) and true
+                           or (FindLatestRCHistoryEntry(winner, entry.link) and true)
+            if not logged then
+                local candData = vfLoot and vfLoot[session] and vfLoot[session].candidates
+                                 and vfLoot[session].candidates[winner] or nil
+                local responseID = candData and (candData.real_response or candData.response) or nil
+                local ok, newHist = pcall(function()
+                    return ml:TrackAndLogLoot(winner, entry.link, responseID, entry.boss, nil, session, candData)
+                end)
+                if ok and type(newHist) == "table" then
+                    entry.history = newHist
+                    print(PREFIX .. " |cFF88FF88Reloaded award logged to RC history.|r")
+                end
+            end
+        end
+    end
+end
+
 -- Maximum age (in days) above which the RC reload button refuses to restore
 -- a historical session into the VotingFrame. Avoids polluting the loot flow
 -- with data weeks or months old.
@@ -537,8 +586,12 @@ function GMLootHistory:InjectItemsIntoVF(items, opts)
                         gear2    = nil,
                         votes    = c.votes   or 0,
                         voters   = votersList,
-                        note     = c.note    or nil,
-                        roll     = (c.roll and c.roll > 0) and c.roll or nil,
+                        -- Empty string "" is TRUTHY in Lua, and RC's SetCellNote
+                        -- does `if note then` -> it would show a bogus note icon +
+                        -- "Remarque" (LABEL_NOTE) tooltip with an empty body for
+                        -- EVERY noteless candidate. Collapse "" to nil.
+                        note     = (c.note and c.note ~= "") and c.note or nil,
+                        roll     = (tonumber(c.roll) and tonumber(c.roll) > 0) and tonumber(c.roll) or nil,
                         haveVoted = (#votersList > 0),
                     }
                 end
@@ -555,7 +608,14 @@ function GMLootHistory:InjectItemsIntoVF(items, opts)
                     lootSlot = nil,
                     owner = nil,
                     session = idx,
-                    typeCode = RCLootCouncil and RCLootCouncil:GetTypeCodeForItem(entry.item_link_raw) or "default"
+                    typeCode = RCLootCouncil and RCLootCouncil:GetTypeCodeForItem(entry.item_link_raw) or "default",
+                    -- Marks this as a RELOADED (detached, no real loot slot) session.
+                    -- RC's native award path only logs to /rc history from the award
+                    -- popup callback, and that write is unreliable for such detached
+                    -- sessions -- so we reconcile it ourselves after award (see
+                    -- EnsureReloadedAwardsInRCHistory), symmetric to how un-award
+                    -- removes the entry via UnTrackAndLogLoot.
+                    _gmReloaded = true,
                 }
                 local itemInfo = ml:GetItemInfo(entry.item_link_raw)
                 if itemInfo then
@@ -956,9 +1016,19 @@ UpdateDetail = function(entry)
                 or ""
             stat = "|cFF888888 ilvl"..Fmt(candIlvl)..diffStr.."|r"
         end
-        if c.votes and c.votes > 0 then stat = stat.."|cFF888888  "..c.votes.."v|r" end
-        if c.roll  and c.roll  > 0 then stat = stat.."|cFF666666 r"..c.roll.."|r" end
-        btn._fsText:SetText(string.format("%s%s|r  %s%s|r%s", cc_str, c.name, rc_str, c.response, stat))
+        local candVotes = tonumber(c.votes)
+        if candVotes and candVotes > 0 then stat = stat.."|cFF888888  "..candVotes.."v|r" end
+        local candRoll = tonumber(c.roll)
+        if candRoll and candRoll > 0 then stat = stat.."|cFF666666 r"..candRoll.."|r" end
+        -- Fallback for legacy entries a past un-award blanked (response = ""):
+        -- show the real response code so the "why" (e.g. upgrade) is never lost.
+        local respLabel = c.response
+        if not respLabel or respLabel == "" then
+            respLabel = (c.real_response_code and c.real_response_code ~= "" and c.real_response_code)
+                or (c.response_code ~= "AWARDED" and c.response_code)
+                or ""
+        end
+        btn._fsText:SetText(string.format("%s%s|r  %s%s|r%s", cc_str, c.name, rc_str, respLabel, stat))
 
         btn._candidate = c
         btn._entryId   = entry.id
@@ -970,7 +1040,8 @@ UpdateDetail = function(entry)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:ClearLines()
             GameTooltip:AddLine(ClassColor(cand.class)..(cand.name or "?").."|r", 1, 1, 1)
-            if cand.roll   and cand.roll   > 0  then GameTooltip:AddLine("Roll: "..cand.roll, 0.8, 0.8, 0.8) end
+            local tipRoll = tonumber(cand.roll)
+            if tipRoll and tipRoll > 0  then GameTooltip:AddLine("Roll: "..tipRoll, 0.8, 0.8, 0.8) end
             if cand.voters and #cand.voters > 0  then GameTooltip:AddLine("Voters: "..table.concat(cand.voters, ", "), 0.7, 0.7, 0.8) end
             if cand.note   and cand.note   ~= "" then GameTooltip:AddLine("Note: "..cand.note, 1, 0.8, 0) end
             if cand.equipped then

@@ -123,6 +123,10 @@ function Scenarios.reload()
         { loot = Sim.loot[2], boss = "Cauldron of Carnage" },
     })
     Sim.populateContestedItem(1)
+    -- One candidate has a real note; the others have none. After reload, RC's
+    -- SetCellNote does `if note then` -- so noteless candidates must come back as
+    -- nil, NOT "" (truthy), else every row shows a bogus "Remarque" note tooltip.
+    Sim.vf:SetCandidateData(1, "Moro-Uldaman", "note", "besoin offspec")
     -- second item: a couple of responses + one vote
     Sim.setResponse(2, "Draknar-Hyjal", 1, 646.0, 1.0)
     Sim.setResponse(2, "Ged-Uldaman",  2, 641.0, 4.0)
@@ -146,6 +150,13 @@ function Scenarios.reload()
     local eq2 = fpEqual(before2, after2)
     ok(eq1, "session 1 votes/voters preserved across reload")
     ok(eq2, "session 2 votes/voters preserved across reload")
+
+    -- Notes: real note survives; noteless candidates come back as nil (not "").
+    local rlc = Sim.vf.__lt[1] and Sim.vf.__lt[1].candidates or {}
+    ok(rlc["Moro-Uldaman"] and rlc["Moro-Uldaman"].note == "besoin offspec",
+       "real note survives reload (got " .. tostring(rlc["Moro-Uldaman"] and rlc["Moro-Uldaman"].note) .. ")")
+    ok(rlc["Ashkandi-Uldaman"] and rlc["Ashkandi-Uldaman"].note == nil,
+       "noteless candidate reinjected as nil, not \"\" (got " .. tostring(rlc["Ashkandi-Uldaman"] and rlc["Ashkandi-Uldaman"].note) .. ")")
 end
 
 -- Weakness A: council votes arriving AFTER responses must refresh the saved
@@ -246,6 +257,19 @@ function Scenarios.reloadAward()
         if e.item_id == 232800 then aw = e.awarded_to end
     end
     ok(aw == "Ged-Uldaman", "awarded_to persisted to gm history (got " .. tostring(aw) .. ")")
+
+    -- The reloaded award must ALSO reach RC's own /rc history. The mock's Award
+    -- doesn't log it (mirroring RC's failure on detached sessions), so the only
+    -- way this entry exists is GuildMastery's EnsureReloadedRCHistory reconcile.
+    local function countRC(winner)
+        local db = Sim.rc.lootDB.factionrealm[winner]
+        return db and #db or 0
+    end
+    ok(countRC("Ged-Uldaman") == 1, "reloaded award logged to RC history (got " .. countRC("Ged-Uldaman") .. ")")
+
+    -- And it must not duplicate on subsequent auto-save passes (dedup).
+    Sim.advance(2)
+    ok(countRC("Ged-Uldaman") == 1, "RC history not duplicated on re-save (got " .. countRC("Ged-Uldaman") .. ")")
 end
 
 Sim.Scenarios = Scenarios   -- exposed for the web UI
