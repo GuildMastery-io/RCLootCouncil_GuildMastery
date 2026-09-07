@@ -202,6 +202,12 @@ local function UpdateRecentDuplicate(s, matched)
                     e.difficulty_id   = s.difficulty_id
                     e.difficulty_name = s.difficulty_name or e.difficulty_name or ""
                 end
+                -- Refresh ownership, but never downgrade an authoritative entry
+                -- (e.g. a council reflection must not overwrite a pulled ML copy).
+                if s.authoritative and not e.authoritative then e.authoritative = true end
+                if (not e.owner or e.owner == "") and s.owner and s.owner ~= "" then
+                    e.owner = s.owner
+                end
                 matched[i] = true   -- prevents another item from this batch matching the same entry
                 return true, e.id
             end
@@ -257,6 +263,9 @@ function GMLootHistory:SaveSessions(sessions, dedup)
                 -- difficulty and the web app defaulted loot to Normal.
                 difficulty_id   = s.difficulty_id   or 0,
                 difficulty_name = s.difficulty_name or "",
+                -- Session ownership (v3): frozen at creation, carried with the entry.
+                owner         = s.owner        or "",
+                authoritative = s.authoritative == true,
                 candidates    = s.candidates  or {},
             })
             count = count + 1
@@ -397,6 +406,8 @@ function GMLootHistory:GetLastSavedSessions()
                 difficulty_name = e.difficulty_name or "",
                 candidates    = e.candidates,
                 looted_at     = e.timestamp or 0,
+                owner         = e.owner or "",
+                authoritative = e.authoritative == true,
             })
         end
     end
@@ -424,6 +435,9 @@ function GMLootHistory:GetAllSessions()
         local createdAt = e.created_at or e.timestamp or 0
         e.created_at = createdAt
         e.id = createdAt .. "_" .. (e.session_num or 0) .. "_" .. (e.item_id or 0)
+        -- Soft-migrate ownership (v3): legacy entries default to non-authoritative.
+        e.owner = e.owner or ""
+        e.authoritative = e.authoritative == true
         table.insert(sessions, {
             id            = e.id,
             session       = e.session_num,
@@ -439,10 +453,68 @@ function GMLootHistory:GetAllSessions()
             looted_at     = createdAt,          -- frozen (creation)
             updated_at    = e.timestamp or createdAt,  -- mutated (award/unaward)
             date          = e.date,
+            owner         = e.owner,            -- ML Name-Realm (v3)
+            authoritative = e.authoritative,    -- reflects the ML's copy (v3)
         })
     end
 
     return sessions
+end
+
+-- Merge canonical entries pulled by the companion (SyncInbox) into local
+-- history, using the SAME authority order as the server:
+--   authoritative (true beats false) then updated_at (newest wins).
+-- A pulled Master Looter copy replaces a local council reflection, but never
+-- downgrades our own authoritative entry. `entries` are in the export shape
+-- (as produced by GetAllSessions). Returns the number of entries applied.
+function GMLootHistory:MergeInbox(entries)
+    if type(entries) ~= "table" or #entries == 0 then return 0 end
+    local hist = GetDB().history
+    local byId = {}
+    for i, e in ipairs(hist) do
+        if e.id then byId[e.id] = i end
+    end
+
+    local applied = 0
+    for _, ex in ipairs(entries) do
+        local id = ex.id
+        if type(id) == "string" and id ~= "" then
+            local entry = {
+                id            = id,
+                created_at    = ex.looted_at  or ex.updated_at or 0,
+                timestamp     = ex.updated_at or ex.looted_at  or 0,
+                date          = ex.date or "",
+                session_num   = ex.session       or 0,
+                item          = ex.item          or "",
+                item_link_raw = ex.item_link_raw or "",
+                item_id       = ex.item_id       or 0,
+                item_ilvl     = ex.item_ilvl     or 0,
+                awarded_to    = ex.awarded_to    or "",
+                boss          = ex.boss          or "",
+                difficulty_id   = ex.difficulty_id   or 0,
+                difficulty_name = ex.difficulty_name or "",
+                candidates    = ex.candidates    or {},
+                owner         = ex.owner         or "",
+                authoritative = ex.authoritative == true,
+            }
+            local idx = byId[id]
+            if not idx then
+                table.insert(hist, entry)
+                byId[id] = #hist
+                applied = applied + 1
+            else
+                local e  = hist[idx]
+                local ea = e.authoritative and 1 or 0
+                local ia = entry.authoritative and 1 or 0
+                -- Incoming wins on higher authority, or equal authority & newer.
+                if ia > ea or (ia == ea and (entry.timestamp or 0) >= (e.timestamp or 0)) then
+                    hist[idx] = entry
+                    applied = applied + 1
+                end
+            end
+        end
+    end
+    return applied
 end
 
 -- Returns the largest `timestamp` present in the history. Used after
