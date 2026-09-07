@@ -272,11 +272,58 @@ function Scenarios.reloadAward()
     ok(countRC("Ged-Uldaman") == 1, "RC history not duplicated on re-save (got " .. countRC("Ged-Uldaman") .. ")")
 end
 
+-- v3: ownership authority + SyncInbox merge (council converges to the ML copy).
+function Scenarios.ownership()
+    print("== ownership authority + inbox merge ==")
+    resetDB()
+    local now = time()
+
+    -- Local council reflection of item 111 (authoritative = false).
+    RCLootCouncil_GuildMasteryDB.history = {
+        { id = "R_111", created_at = now, timestamp = now, session_num = 1, item_id = 111,
+          awarded_to = "", candidates = {}, owner = "ML-R", authoritative = false },
+    }
+
+    -- Inbox: the ML's authoritative copy of the SAME entry (OLDER ts) + a new one.
+    local applied = GMLootHistory:MergeInbox({
+        { id = "R_111", looted_at = now, updated_at = now - 100, session = 1, item_id = 111,
+          awarded_to = "Ged-Uldaman", owner = "ML-R", authoritative = true, candidates = {} },
+        { id = "R_222", looted_at = now, updated_at = now, session = 2, item_id = 222,
+          awarded_to = "Moro", owner = "ML-R", authoritative = true, candidates = {} },
+    })
+    ok(applied == 2, "merge applied both entries (got " .. applied .. ")")
+
+    local byId = {}
+    for _, e in ipairs(RCLootCouncil_GuildMasteryDB.history) do byId[e.id] = e end
+    ok(byId["R_111"] and byId["R_111"].authoritative == true,
+       "council reflection upgraded to the ML authoritative copy (even older ts)")
+    ok(byId["R_111"] and byId["R_111"].awarded_to == "Ged-Uldaman",
+       "pulled award applied (got " .. tostring(byId["R_111"] and byId["R_111"].awarded_to) .. ")")
+    ok(byId["R_222"] ~= nil, "new pulled entry inserted")
+
+    -- A non-authoritative inbox entry must NOT downgrade our authoritative one.
+    local applied2 = GMLootHistory:MergeInbox({
+        { id = "R_111", looted_at = now, updated_at = now + 5000, session = 1, item_id = 111,
+          awarded_to = "SomeoneElse", owner = "", authoritative = false, candidates = {} },
+    })
+    ok(applied2 == 0, "non-authoritative inbox entry rejected (no downgrade)")
+    ok(byId["R_111"].awarded_to == "Ged-Uldaman", "authoritative award preserved")
+
+    -- GetAllSessions serialises owner/authoritative (it recomputes the id from
+    -- created_at/session/item_id, so look the entry up by item_id).
+    local found
+    for _, s in ipairs(GMLootHistory:GetAllSessions()) do
+        if s.item_id == 222 then found = s end
+    end
+    ok(found and found.authoritative == true and found.owner == "ML-R",
+       "GetAllSessions exposes owner/authoritative")
+end
+
 Sim.Scenarios = Scenarios   -- exposed for the web UI
 
 function Sim.run(_, cmd)
     cmd = cmd or "all"
-    local order = { "smoke", "testrestore", "reload", "dedup", "singleitem", "reloadAward" }
+    local order = { "smoke", "testrestore", "reload", "dedup", "singleitem", "reloadAward", "ownership" }
     local toRun = (cmd == "all") and order or { cmd }
     for _, name in ipairs(toRun) do
         local fn = Scenarios[name]

@@ -275,6 +275,35 @@ end
 RCLootCouncil_GuildMastery_ResolveRole = ResolveRole
 
 -- ============================================================
+-- Session ownership (v3): the Master Looter is authoritative
+-- ============================================================
+
+-- Local player's Name-Realm — the stable identity used for `owner`.
+-- Defensive against missing WoW globals (keeps the test harness happy).
+local function PlayerNameRealm()
+    if type(UnitName) ~= "function" then return "" end
+    local name = UnitName("player")
+    if not name or name == "" then return "" end
+    local realm = (type(GetNormalizedRealmName) == "function" and GetNormalizedRealmName())
+        or (type(GetRealmName) == "function" and GetRealmName()) or ""
+    if realm ~= "" then return name .. "-" .. realm end
+    return name
+end
+
+-- Owner (Master Looter) of the current session. RC exposes the ML's name on
+-- every client via `rc.masterLooter`, so council members tag the same owner as
+-- the ML; fall back to ourselves when we ARE the ML.
+local function SessionOwner(rc)
+    if type(rc) == "table" then
+        if type(rc.masterLooter) == "string" and rc.masterLooter ~= "" then
+            return rc.masterLooter
+        end
+        if rc.isMasterLooter then return PlayerNameRealm() end
+    end
+    return ""
+end
+
+-- ============================================================
 -- Build sessions from the RC lootTable
 -- ============================================================
 
@@ -308,6 +337,9 @@ local function BuildSessionsFromLootTable()
             looted_at     = time(),
             difficulty_id   = diffID   or 0,
             difficulty_name = diffName or "",
+            -- Session ownership (v3): the ML's copy is authoritative.
+            owner         = SessionOwner(rc),
+            authoritative = (rc and rc.isMasterLooter) and true or false,
             candidates    = {},
         }
         local typeCode = sd.typeCode or sd.equipLoc or nil
@@ -1091,6 +1123,25 @@ eventFrame:SetScript("OnEvent", function(self, event)
         C_Timer.After(2, function()
             if GMLootHistory and GMLootHistory.PruneOldEntries then
                 GMLootHistory:PruneOldEntries()
+            end
+        end)
+
+        -- Merge canonical entries pulled by the companion (SyncInbox), then clear
+        -- it. This is the v3 return channel: council members converge to the ML's
+        -- authoritative copy. The companion only writes the inbox while WoW is
+        -- closed, so it is fully loaded by the time we read it here.
+        C_Timer.After(2.5, function()
+            local inbox = RCLootCouncil_GuildMasterySyncInbox
+            if type(inbox) == "table" and type(inbox.entries) == "table" and #inbox.entries > 0 then
+                if GMLootHistory and GMLootHistory.MergeInbox then
+                    local n = GMLootHistory:MergeInbox(inbox.entries)
+                    if n > 0 then
+                        print(PREFIX .. string.format(
+                            " |cFF88FF88Sync: %d entry(ies) received from the Master Looter.|r", n))
+                        if GMLootHistory.UpdateSyncPayload then GMLootHistory:UpdateSyncPayload() end
+                    end
+                end
+                RCLootCouncil_GuildMasterySyncInbox = { entries = {} }  -- clear after merge
             end
         end)
 

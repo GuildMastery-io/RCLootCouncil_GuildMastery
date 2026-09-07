@@ -1,6 +1,15 @@
 # Changelog
 
-## 1.4.2 — 2026-08-21
+## 1.5.0 — 2026-09-07
+
+### Added
+
+- **Master Looter is now the source of truth for a session.** When several guild members run GuildMastery Sync, each session is tagged with the Master Looter who ran it; the ML's copy is authoritative. This stops two members from overwriting each other's votes and fixes the case where one member's sync could wipe another's sessions.
+- **Two-way sync.** Council members now receive the Master Looter's canonical votes back into their own `/gm history` (delivered by the companion app between play sessions), so everyone converges on the same, correct data.
+
+### Notes
+
+- Requires GuildMastery Sync (companion app) updated to the matching version for the two-way sync.
 
 ### Fixes
 
