@@ -176,6 +176,27 @@ local function GetDB()
     return db
 end
 
+-- Entries pulled from the companion inbox (MergeInbox) carry only epoch
+-- timestamps, never the local "HH:MM:SS" `time_str` that locally-saved rows
+-- build. Every read site that concatenates `e.time_str` would crash on those
+-- rows (nil), which bricked `/gm history` for anyone whose history is mostly
+-- synced. This resolves `time_str` for any entry, lazily healing legacy rows
+-- in place from their epoch so the whole DB is repaired the first time it is
+-- displayed.
+local function EntryTimeStr(e)
+    if type(e.time_str) == "string" and e.time_str ~= "" then return e.time_str end
+    local epoch = e.created_at or e.timestamp
+    local ts
+    if epoch and epoch > 0 then
+        local t = date("*t", epoch)
+        ts = string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
+    else
+        ts = "00:00:00"
+    end
+    e.time_str = ts
+    return ts
+end
+
 -- ============================================================
 -- Save
 -- ============================================================
@@ -484,6 +505,9 @@ function GMLootHistory:MergeInbox(entries)
                 created_at    = ex.looted_at  or ex.updated_at or 0,
                 timestamp     = ex.updated_at or ex.looted_at  or 0,
                 date          = ex.date or "",
+                -- Inbox entries carry only epochs; derive the local time label
+                -- (set below) so history rows never concatenate a nil time_str.
+                time_str      = ex.time_str,
                 session_num   = ex.session       or 0,
                 item          = ex.item          or "",
                 item_link_raw = ex.item_link_raw or "",
@@ -497,6 +521,7 @@ function GMLootHistory:MergeInbox(entries)
                 owner         = ex.owner         or "",
                 authoritative = ex.authoritative == true,
             }
+            EntryTimeStr(entry)  -- fills time_str from created_at when absent
             local idx = byId[id]
             if not idx then
                 table.insert(hist, entry)
@@ -761,7 +786,7 @@ local function DeleteDate(dateStr)
     local changed = false
     for i = #hist, 1, -1 do
         local e = hist[i]
-        local key = e.date .. " " .. e.time_str
+        local key = e.date .. " " .. EntryTimeStr(e)
         if key == dateStr then table.remove(hist, i); changed = true end
     end
     if changed and RCLootCouncil_GuildMastery_UpdateSyncPayload then RCLootCouncil_GuildMastery_UpdateSyncPayload() end
@@ -801,7 +826,7 @@ end
 local function BuildDateGroups()
     local hist, map, keys = GetDB().history, {}, {}
     for _, e in ipairs(hist) do
-        local key = e.date .. " " .. e.time_str
+        local key = e.date .. " " .. EntryTimeStr(e)
         if not map[key] then map[key] = {}; table.insert(keys, key) end
         table.insert(map[key], e)
     end
@@ -815,7 +840,7 @@ local function BuildDateGroups()
     end)
     local groups = {}
     for _, k in ipairs(keys) do
-        table.sort(map[k], function(a, b) return a.time_str > b.time_str end)
+        table.sort(map[k], function(a, b) return EntryTimeStr(a) > EntryTimeStr(b) end)
         local timePart = k:match("(%d%d:%d%d):") or k:match("%d%d:%d%d") or ""
         local label = k:sub(1,10) .. "  -  |cFF999999" .. timePart .. "|r"
         table.insert(groups, { date = k, label = label, entries = map[k] })
@@ -999,7 +1024,7 @@ UpdateDetail = function(entry)
     local parts = {}
     if entry.item_ilvl and entry.item_ilvl > 0 then table.insert(parts, "ilvl "..Fmt(entry.item_ilvl)) end
     if entry.instance  and entry.instance  ~= "" then table.insert(parts, entry.instance) end
-    table.insert(parts, entry.date .. " " .. entry.time_str)
+    table.insert(parts, entry.date .. " " .. EntryTimeStr(entry))
     _detFS_meta:SetText("|cFF888888" .. table.concat(parts, "  \194\183  ") .. "|r")
 
     -- Award
@@ -1210,7 +1235,7 @@ local function PopulateItems(dateStr)
             btn._fsTime:SetPoint("LEFT", btn, "LEFT", 2, 0)
             btn._fsTime:SetWidth(TIME_W); btn._fsTime:SetJustifyH("LEFT")
         end
-        btn._fsTime:SetText("|cFF888888"..entry.time_str:sub(1,5).."|r")
+        btn._fsTime:SetText("|cFF888888"..EntryTimeStr(entry):sub(1,5).."|r")
 
         -- Icon
         if not btn._icon then

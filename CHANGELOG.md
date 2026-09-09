@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.1 — 2026-09-09
+
+### Fixed
+
+- **`/gm history` no longer crashes when your history contains synced (two-way) entries.** Entries pulled from the Master Looter via the companion carried only timestamps and no display time, so opening the history window threw `attempt to concatenate field 'time_str' (a nil value)`. Their time is now derived from the loot timestamp, and existing broken entries are repaired automatically the first time the window is opened.
+
 ## 1.5.0 — 2026-09-07
 
 ### Added
