@@ -300,6 +300,12 @@ function Scenarios.ownership()
     ok(byId["R_111"] and byId["R_111"].awarded_to == "Ged-Uldaman",
        "pulled award applied (got " .. tostring(byId["R_111"] and byId["R_111"].awarded_to) .. ")")
     ok(byId["R_222"] ~= nil, "new pulled entry inserted")
+    -- Inbox entries carry only epochs; MergeInbox must derive time_str so the
+    -- history window never concatenates a nil (crash that bricked /gm history).
+    ok(byId["R_222"] and type(byId["R_222"].time_str) == "string"
+       and byId["R_222"].time_str ~= "",
+       "pulled entry has a derived time_str (got "
+       .. tostring(byId["R_222"] and byId["R_222"].time_str) .. ")")
 
     -- A non-authoritative inbox entry must NOT downgrade our authoritative one.
     local applied2 = GMLootHistory:MergeInbox({
