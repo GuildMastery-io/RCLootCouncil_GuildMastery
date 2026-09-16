@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2 — 2026-09-16
+
+### Fixed
+
+- **Correct raid difficulty & instance on exported loot.** The difficulty and instance were read from wherever you stood when exporting, not from where the loot dropped — so exporting after leaving the raid (e.g. from a delve) stamped Mythic-raid loot with the wrong difficulty (seen: difficulty `233` / "Mythic – Flexible Raid" from a delve). Loot now uses the instance data RC freezes at the encounter. This also unblocks sync: the bogus out-of-range difficulty id was making the server reject the whole reconcile payload.
+
 ## 1.5.1 — 2026-09-09
 
 ### Fixed

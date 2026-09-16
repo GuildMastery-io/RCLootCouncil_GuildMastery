@@ -141,6 +141,30 @@ local function cleanItemLink(link)
     return link:match("%[(.-)%]") or link
 end
 
+-- Difficulty / instance of the LOOT, not of wherever the player stands at export
+-- time. `GetInstanceInfo()` reports the current zone, so exporting after leaving
+-- the raid (e.g. from a delve) stamps every session with the wrong difficulty
+-- (seen in the wild: delve difficulty 233 "Mythic – Flexible Raid" on Mythic
+-- raid loot). RC freezes the real instance data at the encounter in
+-- `rc.instanceDataSnapshot` (and deliberately skips delves), so prefer it and
+-- fall back to the live zone only when no snapshot is available.
+-- Returns: difficultyID, difficultyName, instanceName.
+local function GetLootInstanceInfo(rc)
+    local snap = rc and rc.instanceDataSnapshot
+    if type(snap) == "table" and (tonumber(snap.difficultyID) or 0) > 0 then
+        local valid = true
+        if type(rc.IsInstanceDataSnapshotValid) == "function" then
+            local ok, res = pcall(function() return rc:IsInstanceDataSnapshotValid() end)
+            valid = ok and res
+        end
+        if valid then
+            return tonumber(snap.difficultyID) or 0, snap.difficultyName or "", snap.instanceName or ""
+        end
+    end
+    local instanceName, _, diffID, diffName = GetInstanceInfo()
+    return diffID or 0, diffName or "", instanceName or ""
+end
+
 -- ============================================================
 -- Popup window with copyable EditBox
 -- ============================================================
@@ -321,10 +345,12 @@ local function BuildSessionsFromLootTable()
     table.sort(activeSessions)
     if #activeSessions == 0 then return nil end
 
+    -- Snapshot the loot's instance once for the whole batch (same encounter).
+    local diffID, diffName, instName = GetLootInstanceInfo(rc)
+
     local sessions = {}
     for _, sessionIdx in ipairs(activeSessions) do
         local sd = lt[sessionIdx]
-        local _, _, diffID, diffName = GetInstanceInfo()
         local sessionExport = {
             session       = sessionIdx,
             item          = cleanItemLink(sd.link),
@@ -337,6 +363,8 @@ local function BuildSessionsFromLootTable()
             looted_at     = time(),
             difficulty_id   = diffID   or 0,
             difficulty_name = diffName or "",
+            -- Instance frozen at loot time too (see GetLootInstanceInfo).
+            instance      = instName or "",
             -- Session ownership (v3): the ML's copy is authoritative.
             owner         = SessionOwner(rc),
             authoritative = (rc and rc.isMasterLooter) and true or false,
@@ -698,7 +726,7 @@ end
 function RCLootCouncil_GuildMastery_ExportSessions(sessions, suppressSave)
     if not sessions or #sessions == 0 then return end
 
-    local _, _, difficultyID, difficultyName = GetInstanceInfo()
+    local difficultyID, difficultyName = GetLootInstanceInfo(GetRC())
 
     local exportData = {
         addon            = ADDON_NAME,
