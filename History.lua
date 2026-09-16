@@ -271,7 +271,10 @@ function GMLootHistory:SaveSessions(sessions, dedup)
                 timestamp     = ts,
                 date          = string.format("%02d/%02d/%04d", t.day, t.month, t.year),
                 time_str      = string.format("%02d:%02d:%02d", t.hour, t.min, t.sec),
-                instance      = GetRealZoneText() or "?",
+                -- Instance frozen at loot time by the exporter (RC snapshot);
+                -- fall back to the current zone only if it wasn't provided.
+                instance      = (type(s.instance) == "string" and s.instance ~= "")
+                    and s.instance or (GetRealZoneText() or "?"),
                 session_num   = s.session     or 0,
                 item          = s.item        or "",
                 item_link_raw = s.item_link_raw or "",
