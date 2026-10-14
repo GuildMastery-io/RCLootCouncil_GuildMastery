@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.3 — 2026-10-14
+
+### Compatibility
+
+- **World of Warcraft Retail 12.1.5** — Interface bumped `120100` → `120105`. No functional changes; marks the addon up to date so it no longer shows as out of date in the client.
+
 ## 1.5.2 — 2026-09-16
 
 ### Fixed
