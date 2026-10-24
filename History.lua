@@ -296,8 +296,12 @@ function GMLootHistory:SaveSessions(sessions, dedup)
         end
     end
 
-    if count > 0 and RCLootCouncil_GuildMastery_UpdateSyncPayload then
-        RCLootCouncil_GuildMastery_UpdateSyncPayload()
+    -- Do NOT rebuild the companion payload here: this runs on the hot path (every
+    -- vote / all-responses / award, several times per boss). Just flag it; the
+    -- logout flush regenerates it once, right before the disk write the companion
+    -- actually reads. (See RCLootCouncil_GuildMastery_UpdateSyncPayload.)
+    if count > 0 and RCLootCouncil_GuildMastery_MarkSyncDirty then
+        RCLootCouncil_GuildMastery_MarkSyncDirty()
     end
 
     return count, savedIds
@@ -792,7 +796,7 @@ local function DeleteDate(dateStr)
         local key = e.date .. " " .. EntryTimeStr(e)
         if key == dateStr then table.remove(hist, i); changed = true end
     end
-    if changed and RCLootCouncil_GuildMastery_UpdateSyncPayload then RCLootCouncil_GuildMastery_UpdateSyncPayload() end
+    if changed and RCLootCouncil_GuildMastery_MarkSyncDirty then RCLootCouncil_GuildMastery_MarkSyncDirty() end
 end
 
 local function DeleteItem(entryId)
@@ -800,7 +804,7 @@ local function DeleteItem(entryId)
     for i = #hist, 1, -1 do
         if hist[i].id == entryId then
             table.remove(hist, i)
-            if RCLootCouncil_GuildMastery_UpdateSyncPayload then RCLootCouncil_GuildMastery_UpdateSyncPayload() end
+            if RCLootCouncil_GuildMastery_MarkSyncDirty then RCLootCouncil_GuildMastery_MarkSyncDirty() end
             break
         end
     end
@@ -813,7 +817,7 @@ local function DeleteCandidate(entryId, candidateName)
             for j = #e.candidates, 1, -1 do
                 if e.candidates[j].name == candidateName then
                     table.remove(e.candidates, j)
-                    if RCLootCouncil_GuildMastery_UpdateSyncPayload then RCLootCouncil_GuildMastery_UpdateSyncPayload() end
+                    if RCLootCouncil_GuildMastery_MarkSyncDirty then RCLootCouncil_GuildMastery_MarkSyncDirty() end
                     break
                 end
             end
@@ -1730,8 +1734,8 @@ function GMLootHistory:GetOrCreateFrame()
                         break
                     end
                 end
-                if RCLootCouncil_GuildMastery_UpdateSyncPayload then
-                    RCLootCouncil_GuildMastery_UpdateSyncPayload()
+                if RCLootCouncil_GuildMastery_MarkSyncDirty then
+                    RCLootCouncil_GuildMastery_MarkSyncDirty()
                 end
 
                 -- Try to sync to RCLootCouncil history (broadcast if ML).

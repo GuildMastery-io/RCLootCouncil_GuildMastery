@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.4 — 2026-10-24
+
+### Fixed
+
+- **No more 2–3 s freeze when a session is saved.** The companion full-sync payload (`syncPayload`) was rebuilt — re-serializing the *entire* history to JSON on the UI thread — on every auto-save, which fires several times per boss (all-votes-in, each council vote, each award). As the history grew over a season, this froze the game each time the "session saved" message appeared. That payload is only ever read by the GuildMasterySync companion from the SavedVariables file, which WoW flushes to disk solely at logout/reload — so the in-combat rebuilds were wasted work. It is now flagged dirty on change (O(1)) and rebuilt once, at logout/reload, right before the disk write. `/gm history` is unaffected and still updates in real time.
+
+### Tooling
+
+- Offline test suite gains a `syncdefer` regression scenario (asserts the payload is not rebuilt on the save hot path and is rebuilt at `PLAYER_LOGOUT`).
+
 ## 1.5.3 — 2026-10-14
 
 ### Compatibility

@@ -703,6 +703,20 @@ end
 -- Main export
 -- ============================================================
 
+-- `db.syncPayload` is the full-history JSON consumed ONLY by the GuildMasterySync
+-- companion, which reads it from the SavedVariables file on disk -- and WoW flushes
+-- that file only at logout / ReloadUI. So the in-memory value is never observed
+-- mid-session. Rebuilding it on every auto-save (SaveSessions fires on every
+-- vote / all-responses / award, several times per boss) re-serialized the entire
+-- 180-day history on the UI thread each time -> multi-second freeze that grows with
+-- the history. Instead, callers flag it dirty here (O(1)) and we rebuild exactly
+-- once, at PLAYER_LOGOUT (which ReloadUI also fires), right before the disk flush.
+local _syncPayloadDirty = false
+
+function RCLootCouncil_GuildMastery_MarkSyncDirty()
+    _syncPayloadDirty = true
+end
+
 function RCLootCouncil_GuildMastery_UpdateSyncPayload()
     if not GMLootHistory or not GMLootHistory.GetAllSessions then return end
     local sessions = GMLootHistory:GetAllSessions()
@@ -721,6 +735,15 @@ function RCLootCouncil_GuildMastery_UpdateSyncPayload()
     local db = RCLootCouncil_GuildMasteryDB
     if not db then db = {} end
     db.syncPayload = json
+    _syncPayloadDirty = false
+end
+
+-- Rebuild the sync payload only if something marked it dirty this session. Called
+-- at PLAYER_LOGOUT (covers both a normal logout and ReloadUI / Save & Reload).
+function RCLootCouncil_GuildMastery_FlushSyncPayload()
+    if _syncPayloadDirty then
+        RCLootCouncil_GuildMastery_UpdateSyncPayload()
+    end
 end
 
 function RCLootCouncil_GuildMastery_ExportSessions(sessions, suppressSave)
@@ -1150,7 +1173,11 @@ eventFrame:SetScript("OnEvent", function(self, event)
         -- even when the user does not trigger a sync.
         C_Timer.After(2, function()
             if GMLootHistory and GMLootHistory.PruneOldEntries then
-                GMLootHistory:PruneOldEntries()
+                -- A prune changes what the companion should sync; flag it so the
+                -- logout flush regenerates a payload without the expired entries.
+                if GMLootHistory:PruneOldEntries() > 0 then
+                    RCLootCouncil_GuildMastery_MarkSyncDirty()
+                end
             end
         end)
 
@@ -1166,7 +1193,7 @@ eventFrame:SetScript("OnEvent", function(self, event)
                     if n > 0 then
                         print(PREFIX .. string.format(
                             " |cFF88FF88Sync: %d entry(ies) received from the Master Looter.|r", n))
-                        if GMLootHistory.UpdateSyncPayload then GMLootHistory:UpdateSyncPayload() end
+                        RCLootCouncil_GuildMastery_MarkSyncDirty()
                     end
                 end
                 RCLootCouncil_GuildMasterySyncInbox = { entries = {} }  -- clear after merge
@@ -1175,8 +1202,8 @@ eventFrame:SetScript("OnEvent", function(self, event)
 
         print(PREFIX .. " loaded \194\183 |cFFFFD700/gm export|r \194\183 |cFFFFD700/gm history|r \194\183 |cFFFFD700/gm debug|r")
     elseif event == "PLAYER_LOGOUT" then
-        if GMLootHistory and GMLootHistory.UpdateSyncPayload then
-            GMLootHistory:UpdateSyncPayload()
-        end
+        -- Last chance before WoW writes SavedVariables to disk: rebuild the
+        -- companion payload if anything changed this session.
+        RCLootCouncil_GuildMastery_FlushSyncPayload()
     end
 end)

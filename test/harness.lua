@@ -26,6 +26,9 @@ end
 -- SavedVariables (RCLootCouncil_GuildMasteryDB). pendingRestore therefore
 -- survives, exactly as in-game.
 function Sim.relog()
+    -- A reload fires PLAYER_LOGOUT before WoW flushes SavedVariables to disk --
+    -- this is when the companion sync payload gets (re)built.
+    Sim.fireEvent("PLAYER_LOGOUT")
     Sim.ml.running = false
     Sim.ml.isHistoricalLoad = false
     Sim.ml.lootTable = {}
@@ -325,11 +328,42 @@ function Scenarios.ownership()
        "GetAllSessions exposes owner/authoritative")
 end
 
+-- The companion sync payload must NOT be rebuilt on the auto-save hot path
+-- (that re-serialised the whole history on every vote/award -> in-game freeze);
+-- it is deferred to PLAYER_LOGOUT, the only moment the companion can read it.
+-- Fails without the fix: the old code populated db.syncPayload inside SaveSessions.
+function Scenarios.syncdefer()
+    print("== sync payload deferred to logout, not rebuilt on save ==")
+    resetDB()
+    Sim.enterRaid("Heroic")
+    Sim.login()
+
+    Sim.startSession({ { loot = Sim.loot[3], boss = "Rik Reverb" } })
+    -- Every group member must respond, else CheckAllResponsesReceived won't save.
+    Sim.setResponse(1, "Ashkandi-Uldaman", 1, 640, 5)
+    Sim.setResponse(1, "Ged-Uldaman",      1, 641, 4)
+    Sim.setResponse(1, "Moro-Uldaman",     2, 638, 6)
+    Sim.setResponse(1, "Sylae-Hyjal",      1, 637, 8)
+    Sim.setResponse(1, "Draknar-Hyjal",    1, 639, 6)
+    Sim.advance(2)  -- CheckAllResponsesReceived -> SaveSessions (auto-save)
+
+    ok(countHistory(232802) == 1, "session auto-saved to /gm history")
+    -- The expensive full-history JSON must NOT have been built on the hot path.
+    ok(RCLootCouncil_GuildMasteryDB.syncPayload == nil,
+       "db.syncPayload NOT rebuilt during the in-combat auto-save")
+
+    -- Logout / reload: the payload is rebuilt once, reflecting the saved entry.
+    Sim.fireEvent("PLAYER_LOGOUT")
+    local payload = RCLootCouncil_GuildMasteryDB.syncPayload
+    ok(type(payload) == "string" and payload:find("232802", 1, true) ~= nil,
+       "db.syncPayload rebuilt at logout and contains the saved loot")
+end
+
 Sim.Scenarios = Scenarios   -- exposed for the web UI
 
 function Sim.run(_, cmd)
     cmd = cmd or "all"
-    local order = { "smoke", "testrestore", "reload", "dedup", "singleitem", "reloadAward", "ownership" }
+    local order = { "smoke", "testrestore", "reload", "dedup", "singleitem", "reloadAward", "ownership", "syncdefer" }
     local toRun = (cmd == "all") and order or { cmd }
     for _, name in ipairs(toRun) do
         local fn = Scenarios[name]
